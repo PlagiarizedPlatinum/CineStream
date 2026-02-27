@@ -1428,12 +1428,12 @@ main { padding-top: 64px; min-height: 100vh; }
       <div>
         <div class="settings-row-label">Default Stream Source</div>
         <div class="settings-btn-row" id="settings-src-btns">
-          <button class="settings-src-btn active" data-src="vidsrc">VidSrc</button>
-          <button class="settings-src-btn" data-src="vidsrc2">VidSrc 2</button>
-          <button class="settings-src-btn" data-src="vidsrccc">VidSrc 3</button>
-          <button class="settings-src-btn" data-src="autoembed">AutoEmbed</button>
-          <button class="settings-src-btn" data-src="superembed">SuperEmbed</button>
-          <button class="settings-src-btn" data-src="vsembed">VSEmbed</button>
+          <button class="settings-src-btn active" data-src="vidsrc">VidSrc CC</button>
+          <button class="settings-src-btn" data-src="vidsrc2">Embed.su</button>
+          <button class="settings-src-btn" data-src="vidsrccc">AutoEmbed</button>
+          <button class="settings-src-btn" data-src="autoembed">2Embed</button>
+          <button class="settings-src-btn" data-src="superembed">MultiEmbed</button>
+          <button class="settings-src-btn" data-src="vsembed">NonStop</button>
         </div>
       </div>
       <div>
@@ -1609,12 +1609,12 @@ main { padding-top: 64px; min-height: 100vh; }
     </div>
     <div class="source-switcher" id="source-switcher">
       <span class="source-label">Source</span>
-      <button class="src-btn active" data-src="vidsrc">VidSrc</button>
-      <button class="src-btn" data-src="vidsrc2">VidSrc 2</button>
-      <button class="src-btn" data-src="vidsrccc">VidSrc 3</button>
-      <button class="src-btn" data-src="autoembed">AutoEmbed</button>
-      <button class="src-btn" data-src="superembed">SuperEmbed</button>
-      <button class="src-btn" data-src="vsembed">VSEmbed</button>
+      <button class="src-btn active" data-src="vidsrc">VidSrc CC</button>
+      <button class="src-btn" data-src="vidsrc2">Embed.su</button>
+      <button class="src-btn" data-src="vidsrccc">AutoEmbed</button>
+      <button class="src-btn" data-src="autoembed">2Embed</button>
+      <button class="src-btn" data-src="superembed">MultiEmbed</button>
+      <button class="src-btn" data-src="vsembed">NonStop</button>
     </div>
   </div>
 </div>
@@ -1649,110 +1649,47 @@ main { padding-top: 64px; min-height: 100vh; }
 
 /* ─── AD BLOCKING (runs immediately) ─────────────────────────── */
 (function adBlock() {
-  // 1. Block window.open popups from iframes
-  const _open = window.open;
-  window.open = function(url, name, features) {
-    if (!url || url === '' || url === 'about:blank') return _open.call(this, url, name, features);
-    return null;
-  };
+  // Block all window.open calls (stops popup ads and redirect tabs)
+  window.open = () => null;
 
-  // 2. Warn before unload only when player is active
+  // Intercept clicks that try to navigate the top frame (redirect ads)
+  window.addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (a && a.target === '_blank' && !a.closest('#app-content header, .player-container')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  // Block beforeunload redirect attempts when player is open
   window.addEventListener('beforeunload', e => {
-    const modal = document.getElementById('player-modal');
-    if (modal && modal.classList.contains('active')) { e.preventDefault(); e.returnValue = ''; }
+    if (document.getElementById('player-modal')?.classList.contains('active')) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
   });
 
-  // 3. Block notification permission
+  // Block notification/push permission prompts
   if ('Notification' in window) {
-    try {
-      Object.defineProperty(Notification, 'requestPermission', {
-        value: () => Promise.resolve('denied'), writable: true, configurable: true
-      });
-    } catch (_) {}
+    try { Object.defineProperty(Notification, 'requestPermission', { value: () => Promise.resolve('denied'), configurable: false }); } catch (_) {}
   }
-
-  // 4. Block push subscriptions
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then(reg => { if (reg?.pushManager) reg.pushManager.subscribe = () => Promise.reject(new Error('blocked')); })
-      .catch(() => {});
+    navigator.serviceWorker.ready.then(r => {
+      if (r?.pushManager) r.pushManager.subscribe = () => Promise.reject(new Error('blocked'));
+    }).catch(() => {});
   }
 
-  // 5. Override document.write for ad injection attempts
-  const _dw = document.write.bind(document);
-  document.write = function(html) {
-    const blocked = ['adsense', 'doubleclick', 'popads', 'adsbygoogle', 'googletag'];
-    if (typeof html === 'string' && blocked.some(p => html.includes(p))) return;
-    _dw(html);
-  };
-
-  // 6. Block eval-based popunders
-  const _eval = window.eval;
-  window.eval = function(code) {
-    const blocked = ['popunder', 'clickunder', 'popads', 'popcash', 'trafficjunky'];
-    if (typeof code === 'string' && blocked.some(p => code.includes(p))) return undefined;
-    return _eval.call(this, code);
-  };
-
-  // 7. Helper: safe className for SVG elements
-  function safeClass(node) {
-    try {
-      const c = node.className;
-      if (!c) return '';
-      return (typeof c === 'string' ? c : (c.baseVal || '')).toLowerCase();
-    } catch (_) { return ''; }
-  }
-
-  // 8. Ad node detector
-  const OWN_IDS = new Set(['player-modal','player-iframe','pw-gate','mobile-nav',
-    'settings-modal','app-content','hero-section','scream-row','movies-grid','tv-grid',
-    'matches-grid','franchise-view','source-switcher']);
-  const AD_TOKENS = ['adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard',
-    'interstitial','ad-overlay','adoverlay','sticky-ad','popunder','clickunder','admodal',
-    'gpt-ad','div-gpt','google_ads','carbonads','ez-ad'];
-  const AD_SRCS = ['doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
-    'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash','propellerads',
-    'adsterra','adcash','juicyads','yllix','evadav','richpush','coinzilla','a-ads.com'];
-  const AD_SCRIPTS = ['adsbygoogle','googletag','popads.net','popcash.net','exoclick',
-    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot','minero.cc','webmr.ru'];
-
-  function isAdNode(node) {
-    if (!node || node.nodeType !== 1) return false;
-    const tag = (node.tagName || '').toLowerCase();
-    const id  = (node.id  || '').toLowerCase();
-    const cls = safeClass(node);
-    const src = node.src || node.href || '';
-    if (OWN_IDS.has(node.id) || OWN_IDS.has(id)) return false;
-    const zi = parseInt(node.style?.zIndex || 0, 10);
-    const pos = node.style?.position;
-    if ((pos === 'fixed' || pos === 'absolute') && zi > 9999) return true;
-    if (AD_TOKENS.some(t => id.includes(t) || cls.includes(t))) return true;
-    if (tag === 'iframe' && node.id !== 'player-iframe' && AD_SRCS.some(s => src.includes(s))) return true;
-    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent || '').includes(s))) return true;
-    return false;
-  }
-
-  const AD_SELECTORS = ['.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
-    '[class*="popunder"]','[class*="clickunder"]'];
-
-  new MutationObserver(muts => {
-    muts.forEach(m => {
-      m.addedNodes.forEach(n => {
-        if (isAdNode(n)) { n.remove(); return; }
-        if (n.nodeType === 1) AD_SELECTORS.forEach(s => { try { n.querySelectorAll(s).forEach(e => e.remove()); } catch (_) {} });
-      });
-      if (m.type === 'attributes' && isAdNode(m.target)) m.target.remove();
+  // Sweep injected overlay ads (fixed-position elements with very high z-index that aren't ours)
+  const OWN = new Set(['player-modal','settings-modal','pw-gate','mobile-nav','source-switcher']);
+  function sweepOverlays() {
+    document.querySelectorAll('body > *:not(#app-content):not(#pw-gate):not(script):not(style)').forEach(el => {
+      if (OWN.has(el.id)) return;
+      const st = window.getComputedStyle(el);
+      if ((st.position === 'fixed' || st.position === 'absolute') && parseInt(st.zIndex) > 9000) el.remove();
     });
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class'] });
-
-  function sweep() {
-    AD_SELECTORS.forEach(s => {
-      try { document.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch (_) {}
-    });
-    try { document.querySelectorAll('div,iframe,ins').forEach(e => { if (isAdNode(e)) e.remove(); }); } catch (_) {}
   }
-  [600, 2200, 5000].forEach(t => setTimeout(sweep, t));
-  setInterval(sweep, 12000);
+  [1000, 3000, 6000].forEach(t => setTimeout(sweepOverlays, t));
+  setInterval(sweepOverlays, 10000);
 })();
 
 /* ─── CONSTANTS ────────────────────────────────────────────── */
@@ -2071,34 +2008,40 @@ function setPlayerSrc() {
 
   switch (state.currentSource) {
     case 'vidsrc':
+      // vidsrc.cc — currently most reliable
       url = type === 'movie'
         ? `https://vidsrc.cc/v2/embed/movie/${id}`
         : `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'vidsrc2':
-      url = type === 'movie'
-        ? `https://vidsrc.to/embed/movie/${id}`
-        : `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`;
-      break;
-    case 'vidsrccc':
+      // embed.su — working replacement for dead vidsrc.me
       url = type === 'movie'
         ? `https://embed.su/embed/movie/${id}`
         : `https://embed.su/embed/tv/${id}/${season}/${episode}`;
       break;
-    case 'autoembed':
+    case 'vidsrccc':
+      // autoembed — reliable
       url = type === 'movie'
         ? `https://player.autoembed.cc/embed/movie/${id}`
         : `https://player.autoembed.cc/embed/tv/${id}/${season}/${episode}`;
       break;
+    case 'autoembed':
+      // 2embed — working
+      url = type === 'movie'
+        ? `https://www.2embed.cc/embed/${id}`
+        : `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
+      break;
     case 'superembed':
+      // multiembed — working
       url = type === 'movie'
         ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
         : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`;
       break;
     case 'vsembed':
+      // non-stop — working
       url = type === 'movie'
-        ? `https://www.2embed.cc/embed/${id}`
-        : `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
+        ? `https://www.NonStopMovie.link/embed/?tmdb=${id}&type=movie`
+        : `https://www.NonStopMovie.link/embed/?tmdb=${id}&type=tv&s=${season}&e=${episode}`;
       break;
   }
 
@@ -2109,12 +2052,12 @@ function resetSourceSwitcher() {
   const switcher = document.getElementById('source-switcher');
   switcher.innerHTML = '<span class="source-label">Source</span>';
   const sources = [
-    { key: 'vidsrc',    label: 'VidSrc'    },
-    { key: 'vidsrc2',   label: 'VidSrc 2'  },
-    { key: 'vidsrccc',  label: 'VidSrc 3'  },
-    { key: 'autoembed', label: 'AutoEmbed' },
-    { key: 'superembed',label: 'SuperEmbed'},
-    { key: 'vsembed',   label: 'VSEmbed'   },
+    { key: 'vidsrc',     label: 'VidSrc CC'  },
+    { key: 'vidsrc2',    label: 'Embed.su'   },
+    { key: 'vidsrccc',   label: 'AutoEmbed'  },
+    { key: 'autoembed',  label: '2Embed'     },
+    { key: 'superembed', label: 'MultiEmbed' },
+    { key: 'vsembed',    label: 'NonStop'    },
   ];
   sources.forEach(({ key, label }) => {
     const btn = document.createElement('button');
@@ -2661,20 +2604,21 @@ async function watchMatch(match) {
 function loadFootballStream(url) {
   const iframe = document.getElementById('player-iframe');
   if (url.includes('.m3u8')) {
-    // Inline HLS player — streamed.su/player doesn't work cross-origin
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>*{margin:0;padding:0;box-sizing:border-box;background:#000}video{width:100vw;height:100vh;display:block}</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000}video{width:100vw;height:100vh;display:block}</style>
 </head><body>
 <video id="v" controls autoplay playsinline></video>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"><\/script>
 <script>
-var v=document.getElementById('v'),src="${url.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}";
-if(Hls.isSupported()){var h=new Hls();h.loadSource(src);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});});}
+var v=document.getElementById('v'),src=${JSON.stringify(url)};
+if(Hls.isSupported()){var h=new Hls({enableWorker:true,lowLatencyMode:true});h.loadSource(src);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});});}
 else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch(function(){});}
 <\/script></body></html>`;
     const blob = new Blob([html], { type: 'text/html' });
-    const blobUrl = URL.createObjectURL(blob);
-    iframe.src = blobUrl;
+    const prev = iframe._blobUrl;
+    iframe._blobUrl = URL.createObjectURL(blob);
+    iframe.src = iframe._blobUrl;
+    if (prev) setTimeout(() => URL.revokeObjectURL(prev), 5000);
   } else {
     iframe.src = url;
   }
