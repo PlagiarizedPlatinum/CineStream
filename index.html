@@ -2,13 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ReelWave</title>
-<link rel="dns-prefetch" href="https://api.themoviedb.org">
-<link rel="dns-prefetch" href="https://image.tmdb.org">
-<link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://image.tmdb.org" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════
@@ -50,8 +46,8 @@ body {
 }
 
 img { display: block; max-width: 100%; }
-button { cursor: pointer; }
-a { text-decoration: none; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+a { text-decoration: none; color: inherit; -webkit-tap-highlight-color: transparent; }
 
 /* ═══════════════════════════════════════════════
    SCROLLBAR
@@ -581,7 +577,9 @@ main { padding-top: 64px; min-height: 100vh; }
   cursor: pointer;
   transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
   will-change: transform;
+  -webkit-tap-highlight-color: transparent;
 }
+.movie-card:active { transform: scale(0.96) !important; transition: transform 0.1s ease; }
 .movie-card:hover {
   transform: translateY(-8px) scale(1.02);
   box-shadow: 0 24px 48px rgba(0,0,0,0.65), 0 0 0 1px rgba(232,201,109,0.2);
@@ -1284,11 +1282,13 @@ main { padding-top: 64px; min-height: 100vh; }
   position: fixed;
   bottom: 0; left: 0; right: 0;
   z-index: 300;
-  height: 62px;
-  background: rgba(13,17,23,0.97);
+  height: calc(62px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(10,13,20,0.98);
   border-top: 1px solid var(--border);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.04), 0 -8px 32px rgba(0,0,0,0.4);
 }
 .mob-btn {
   flex: 1;
@@ -1303,19 +1303,28 @@ main { padding-top: 64px; min-height: 100vh; }
   font-family: 'DM Sans', sans-serif;
   font-size: 9.5px;
   font-weight: 500;
-  letter-spacing: 0.5px;
-  transition: color var(--transition);
+  letter-spacing: 0.3px;
+  transition: color 0.15s ease, transform 0.15s ease;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
-.mob-btn svg { width: 21px; height: 21px; fill: currentColor; }
+.mob-btn svg { width: 22px; height: 22px; fill: currentColor; transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1); }
 .mob-btn.active { color: var(--accent); }
+.mob-btn.active svg { transform: scale(1.15); }
+.mob-btn.active::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  animation: fadeIn 0.2s ease forwards;
+}
+.mob-btn { position: relative; }
+.mob-btn:active { transform: scale(0.92); }
 .mob-btn:hover  { color: var(--text-dim); }
-
-/* ═══════════════════════════════════════════════
-   PERFORMANCE
-═══════════════════════════════════════════════ */
-.tab-content:not(.active) { display: none; }
-.franchise-block { content-visibility: auto; contain-intrinsic-size: 0 340px; }
 
 /* ═══════════════════════════════════════════════
    RESPONSIVE — TABLET
@@ -1330,58 +1339,143 @@ main { padding-top: 64px; min-height: 100vh; }
    RESPONSIVE — MOBILE
 ═══════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  header { padding: 0 16px; gap: 8px; }
+  /* Header */
+  header {
+    padding: 0 14px 0 16px;
+    gap: 10px;
+    height: 56px;
+  }
   header nav { display: none; }
-  #search-input { width: 130px; }
-  #search-input:focus { width: 160px; }
+  .logo { font-size: 22px; letter-spacing: 4px; }
+  .search-wrap { flex: 1; }
+  #search-input {
+    width: 100%;
+    font-size: 14px;
+    padding: 9px 36px 9px 12px;
+  }
+  #search-input:focus { width: 100%; }
   .settings-trigger { display: none; }
+  .header-right { flex: 1; min-width: 0; }
 
-  .hero { padding: 28px 16px 36px; height: auto; min-height: 360px; }
-  .hero-title { font-size: clamp(36px, 9vw, 52px); }
-  .hero-overview { font-size: 13px; -webkit-line-clamp: 2; }
+  /* Main padding for fixed header + bottom nav */
+  main { padding-top: 56px; padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px) + 8px); }
+
+  /* Hero */
+  .hero {
+    padding: 24px 16px 28px;
+    height: auto;
+    min-height: 340px;
+    align-items: flex-end;
+  }
+  .hero-badge { font-size: 8px; padding: 4px 10px; margin-bottom: 10px; }
+  .hero-title { font-size: clamp(32px, 8.5vw, 52px); margin-bottom: 12px; }
+  .hero-meta { gap: 10px; font-size: 12px; margin-bottom: 12px; }
+  .hero-overview { font-size: 13px; -webkit-line-clamp: 2; margin-bottom: 20px; }
   .hero-actions { gap: 8px; }
-  .btn-play, .btn-secondary { padding: 11px 20px; font-size: 12.5px; }
-  .hero-dots { right: 16px; }
+  .btn-play, .btn-secondary { padding: 11px 18px; font-size: 13px; }
+  .hero-dots { right: 16px; bottom: 16px; }
 
-  .section { padding: 20px 16px; }
-  .football-section { padding: 16px; }
-  .football-hero { padding: 20px 16px 0; }
-  .football-hero-title { font-size: 36px; }
-  .football-hero-sub { font-size: 12px; margin-bottom: 14px; }
+  /* Sections */
+  .section { padding: 18px 14px 10px; }
+  .section-title { font-size: 18px; }
+
+  /* Football */
+  .football-section { padding: 14px; }
+  .football-hero { padding: 18px 14px 0; }
+  .football-hero-title { font-size: 32px; letter-spacing: 3px; }
+  .football-hero-sub { font-size: 12px; margin-bottom: 12px; }
   #match-search { width: 100%; }
-  .football-controls { flex-wrap: wrap; }
+  .football-controls { flex-wrap: wrap; gap: 8px; }
+  .refresh-btn { flex: 1; justify-content: center; }
+  #match-count { width: 100%; text-align: center; }
+  .matches-grid { grid-template-columns: 1fr; gap: 10px; }
+  .match-card { padding: 14px 16px; }
+  .team-badge { width: 42px; height: 42px; }
+  .team-name { font-size: 12px; }
 
-  .cards-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+  /* Cards grid - proper 2-column on phones, not too small */
+  .cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  @supports (width: env(safe-area-inset-left)) {
+    .cards-grid { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  }
+
+  /* Card overlays always visible on mobile */
   .card-overlay { opacity: 1; }
-  .card-play-btn { opacity: 1; transform: translate(-50%, -50%) scale(0.85); }
+  .card-play-btn { opacity: 1; transform: translate(-50%, -50%) scale(0.82); }
+  .movie-card:hover { transform: none; box-shadow: none; border-color: var(--border); }
+  .movie-card:active { transform: scale(0.97); }
 
-  .tab-btns { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  /* Tabs */
+  .tab-btns {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0;
+    margin-bottom: 18px;
+  }
   .tab-btns::-webkit-scrollbar { display: none; }
-  .tab-btn { font-size: 11.5px; padding: 10px 14px; }
+  .tab-btn { font-size: 12px; padding: 10px 14px; white-space: nowrap; }
 
-  .genre-chips { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
+  /* Genre chips */
+  .genre-chips {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
   .genre-chips::-webkit-scrollbar { display: none; }
-  .genre-chip { white-space: nowrap; }
+  .genre-chip { white-space: nowrap; font-size: 11.5px; padding: 5px 13px; }
 
+  /* Franchise rows */
+  .franchise-row .movie-card { flex: 0 0 120px; }
+  #scream-row .movie-card    { flex: 0 0 120px; }
+
+  /* Player - slides up from bottom */
   .player-modal { align-items: flex-end; }
   .player-container {
     width: 100vw;
-    border-radius: 14px 14px 0 0;
-    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+    max-height: 94vh;
     overflow-y: auto;
     animation: slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  .source-switcher { padding: 10px 14px; gap: 6px; }
-  .episode-selector { padding: 10px 14px; }
+  .player-header { padding: 14px 16px; }
+  .player-title { font-size: 18px; }
+  .source-switcher { padding: 10px 14px; gap: 6px; flex-wrap: wrap; }
+  .src-btn { font-size: 11px; padding: 5px 11px; }
+  .episode-selector { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+  .ep-select { font-size: 12px; padding: 6px 10px; flex: 1; min-width: 0; }
 
-  .matches-grid { grid-template-columns: 1fr; }
-  .match-card { padding: 16px; }
-
-  main { padding-bottom: 66px; }
+  /* Mobile nav show */
   .mobile-nav { display: flex; }
 
-  .gate-box { padding: 28px 22px; width: calc(100vw - 40px); }
-  .gate-logo { font-size: 38px; }
+  /* Gate */
+  .gate-box { padding: 28px 20px; width: calc(100vw - 36px); }
+  .gate-logo { font-size: 40px; letter-spacing: 6px; }
+  .gate-tagline { font-size: 10px; }
+
+  /* Settings modal */
+  .settings-box { width: calc(100vw - 24px); max-width: 420px; }
+  .settings-body { padding: 18px 20px; gap: 18px; }
+  .settings-head { padding: 18px 20px; }
+
+  /* Search section */
+  #search-results-section { padding: 16px 14px; }
+}
+
+/* Extra small phones */
+@media (max-width: 375px) {
+  .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .hero-title { font-size: clamp(28px, 9vw, 42px); }
+  .btn-play, .btn-secondary { padding: 10px 14px; font-size: 12px; }
 }
 </style>
 </head>
@@ -1606,9 +1700,10 @@ main { padding-top: 64px; min-height: 100vh; }
     <div class="player-wrap">
       <iframe id="player-iframe"
         allowfullscreen
-        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+        allow="autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer"
         referrerpolicy="no-referrer"
-        title="Video player"></iframe>
+        title="Video player"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock"></iframe>
     </div>
     <div id="episode-selector-wrap">
       <div class="episode-selector">
@@ -1658,54 +1753,73 @@ main { padding-top: 64px; min-height: 100vh; }
 <script>
 'use strict';
 
-/* ─── AD BLOCKING (runs immediately) ─────────────────────────── */
+/* ─── AD & REDIRECT BLOCKING (runs immediately) ──────────────── */
 (function adBlock() {
-  // 1. Block window.open popups from iframes
-  const _open = window.open;
-  window.open = function(url, name, features) {
-    if (!url || url === '' || url === 'about:blank') return _open.call(this, url, name, features);
-    return null;
-  };
+  // 1. Completely block ALL window.open — no exceptions from iframes
+  window.open = function() { return null; };
 
-  // 2. Warn before unload only when player is active
+  // 2. Block top-level navigation redirects from iframes
+  // If something tries to change window.location, catch it
+  try {
+    const locDesc = Object.getOwnPropertyDescriptor(window, 'location');
+    if (!locDesc || locDesc.configurable) {
+      let _href = window.location.href;
+      Object.defineProperty(window, 'location', {
+        get() { return { href: _href, assign: () => {}, replace: () => {}, reload: () => {} }; },
+        set() {},
+        configurable: true
+      });
+    }
+  } catch (_) {}
+
+  // 3. Block beforeunload redirects — don't show dialog, just cancel
   window.addEventListener('beforeunload', e => {
     const modal = document.getElementById('player-modal');
     if (modal && modal.classList.contains('active')) { e.preventDefault(); e.returnValue = ''; }
-  });
+  }, true);
 
-  // 3. Block notification permission
+  // 4. Block all new tab / popup attempts
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[target="_blank"], a[target="new"]');
+    if (a && !a.closest('#app-content > *:not(#player-modal)')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  // 5. Block notification permission
   if ('Notification' in window) {
     try {
       Object.defineProperty(Notification, 'requestPermission', {
-        value: () => Promise.resolve('denied'), writable: true, configurable: true
+        value: () => Promise.resolve('denied'), writable: false, configurable: false
       });
     } catch (_) {}
   }
 
-  // 4. Block push subscriptions
+  // 6. Block push subscriptions
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready
       .then(reg => { if (reg?.pushManager) reg.pushManager.subscribe = () => Promise.reject(new Error('blocked')); })
       .catch(() => {});
   }
 
-  // 5. Override document.write for ad injection attempts
+  // 7. Block eval-based popunders
+  const _eval = window.eval;
+  window.eval = function(code) {
+    const blocked = ['popunder','clickunder','popads','popcash','trafficjunky','adsterra','exoclick'];
+    if (typeof code === 'string' && blocked.some(p => code.toLowerCase().includes(p))) return undefined;
+    return _eval.call(this, code);
+  };
+
+  // 8. Block document.write ad injection
   const _dw = document.write.bind(document);
   document.write = function(html) {
-    const blocked = ['adsense', 'doubleclick', 'popads', 'adsbygoogle', 'googletag'];
+    const blocked = ['adsense','doubleclick','popads','adsbygoogle','googletag','exoclick','trafficjunky'];
     if (typeof html === 'string' && blocked.some(p => html.includes(p))) return;
     _dw(html);
   };
 
-  // 6. Block eval-based popunders
-  const _eval = window.eval;
-  window.eval = function(code) {
-    const blocked = ['popunder', 'clickunder', 'popads', 'popcash', 'trafficjunky'];
-    if (typeof code === 'string' && blocked.some(p => code.includes(p))) return undefined;
-    return _eval.call(this, code);
-  };
-
-  // 7. Helper: safe className for SVG elements
+  // 9. Helper: safe className for SVG/HTML elements
   function safeClass(node) {
     try {
       const c = node.className;
@@ -1714,56 +1828,110 @@ main { padding-top: 64px; min-height: 100vh; }
     } catch (_) { return ''; }
   }
 
-  // 8. Ad node detector
-  const OWN_IDS = new Set(['player-modal','player-iframe','pw-gate','mobile-nav',
+  // 10. Ad node detector — aggressive
+  const OWN_IDS = new Set([
+    'player-modal','player-iframe','pw-gate','mobile-nav',
     'settings-modal','app-content','hero-section','scream-row','movies-grid','tv-grid',
-    'matches-grid','franchise-view','source-switcher']);
-  const AD_TOKENS = ['adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard',
-    'interstitial','ad-overlay','adoverlay','sticky-ad','popunder','clickunder','admodal',
-    'gpt-ad','div-gpt','google_ads','carbonads','ez-ad'];
-  const AD_SRCS = ['doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
-    'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash','propellerads',
-    'adsterra','adcash','juicyads','yllix','evadav','richpush','coinzilla','a-ads.com'];
-  const AD_SCRIPTS = ['adsbygoogle','googletag','popads.net','popcash.net','exoclick',
-    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot','minero.cc','webmr.ru'];
+    'matches-grid','franchise-view','source-switcher','main-nav','search-input',
+    'hero-bg','hero-dots','hero-content','hero-badge','hero-title'
+  ]);
+  const OWN_CLASSES = new Set([
+    'player-modal','player-container','player-wrap','source-switcher',
+    'movie-card','match-card','mobile-nav','mob-btn','hero','hero-bg',
+    'cards-grid','matches-grid','franchise-row','settings-box','modal-backdrop'
+  ]);
+
+  const AD_TOKENS = [
+    'adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard','interstitial',
+    'ad-overlay','adoverlay','sticky-ad','popunder','clickunder','admodal','gpt-ad',
+    'div-gpt','google_ads','carbonads','ez-ad','ad-unit','ad-slot','sponsored',
+    'taboola','outbrain','mgid','revcontent','adskeeper','propeller','adcash'
+  ];
+  const AD_SRCS = [
+    'doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
+    'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash',
+    'propellerads','adsterra','adcash','juicyads','yllix','evadav','richpush',
+    'coinzilla','a-ads.com','revcontent','taboola','outbrain','mgid','adskeeper',
+    'smartadserver','appnexus','criteo','media.net','amazon-adsystem'
+  ];
+  const AD_SCRIPTS = [
+    'adsbygoogle','googletag','popads.net','popcash.net','exoclick','trafficjunky',
+    'propellerads','adsterra','coinhive','cryptoloot','minero.cc','webmr.ru',
+    'pushcrew','onesignal','adskeeper','revcontent','taboola','outbrain'
+  ];
 
   function isAdNode(node) {
     if (!node || node.nodeType !== 1) return false;
-    const tag = (node.tagName || '').toLowerCase();
-    const id  = (node.id  || '').toLowerCase();
+    if (OWN_IDS.has(node.id)) return false;
     const cls = safeClass(node);
-    const src = node.src || node.href || '';
-    if (OWN_IDS.has(node.id) || OWN_IDS.has(id)) return false;
-    const zi = parseInt(node.style?.zIndex || 0, 10);
-    const pos = node.style?.position;
-    if ((pos === 'fixed' || pos === 'absolute') && zi > 9999) return true;
+    if (OWN_CLASSES.has(cls)) return false;
+
+    const tag = (node.tagName || '').toLowerCase();
+    const id  = (node.id || '').toLowerCase();
+    const src = (node.src || node.href || node.data || '').toLowerCase();
+
+    // Block high z-index fixed/absolute overlays that aren't ours
+    try {
+      const st = window.getComputedStyle(node);
+      const zi = parseInt(st.zIndex || 0, 10);
+      const pos = st.position;
+      if ((pos === 'fixed' || pos === 'absolute') && zi > 8000 && !OWN_IDS.has(node.id)) return true;
+    } catch (_) {}
+
     if (AD_TOKENS.some(t => id.includes(t) || cls.includes(t))) return true;
-    if (tag === 'iframe' && node.id !== 'player-iframe' && AD_SRCS.some(s => src.includes(s))) return true;
-    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent || '').includes(s))) return true;
+    if (tag === 'iframe' && node.id !== 'player-iframe' && src && AD_SRCS.some(s => src.includes(s))) return true;
+    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent || '').toLowerCase().includes(s))) return true;
+    if ((tag === 'ins' || tag === 'object' || tag === 'embed') && AD_SRCS.some(s => src.includes(s))) return true;
+
     return false;
   }
 
-  const AD_SELECTORS = ['.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
-    '[class*="popunder"]','[class*="clickunder"]'];
+  const AD_SELECTORS = [
+    '.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
+    '[class*="popunder"]','[class*="clickunder"]','[class*="ad-overlay"]',
+    'ins.adsbygoogle','[data-ad-slot]','iframe[src*="doubleclick"]',
+    'iframe[src*="googlesyndication"]','iframe[src*="exoclick"]',
+    '[class*="taboola"]','[class*="outbrain"]','[id*="taboola"]'
+  ];
 
+  // MutationObserver — remove ads as they're injected
   new MutationObserver(muts => {
-    muts.forEach(m => {
-      m.addedNodes.forEach(n => {
-        if (isAdNode(n)) { n.remove(); return; }
-        if (n.nodeType === 1) AD_SELECTORS.forEach(s => { try { n.querySelectorAll(s).forEach(e => e.remove()); } catch (_) {} });
-      });
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (isAdNode(n)) { n.remove(); continue; }
+        if (n.nodeType === 1) {
+          AD_SELECTORS.forEach(s => {
+            try { n.querySelectorAll(s).forEach(e => e.remove()); } catch (_) {}
+          });
+        }
+      }
       if (m.type === 'attributes' && isAdNode(m.target)) m.target.remove();
-    });
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class'] });
+    }
+  }).observe(document.documentElement, {
+    childList: true, subtree: true, attributes: true,
+    attributeFilter: ['style','class','src','href']
+  });
 
+  // Periodic sweep
   function sweep() {
     AD_SELECTORS.forEach(s => {
       try { document.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch (_) {}
     });
-    try { document.querySelectorAll('div,iframe,ins').forEach(e => { if (isAdNode(e)) e.remove(); }); } catch (_) {}
+    try {
+      document.querySelectorAll('div,iframe,ins,object,embed').forEach(e => {
+        if (isAdNode(e)) e.remove();
+      });
+    } catch (_) {}
   }
-  [600, 2200, 5000].forEach(t => setTimeout(sweep, t));
-  setInterval(sweep, 12000);
+  [300, 1000, 2500, 5000, 10000].forEach(t => setTimeout(sweep, t));
+  setInterval(sweep, 8000);
+
+  // 11. Block meta refresh redirects
+  const _metaCheck = () => {
+    document.querySelectorAll('meta[http-equiv="refresh"]').forEach(m => m.remove());
+  };
+  setTimeout(_metaCheck, 500);
+  setInterval(_metaCheck, 3000);
 })();
 
 /* ─── CONSTANTS ────────────────────────────────────────────── */
@@ -1794,19 +1962,13 @@ let state = {
 const matchMap = new Map();
 let matchCounter = 0;
 
-/* ─── TMDB FETCH with cache ───────────────────────────────── */
-const _tmdbCache = new Map();
+/* ─── TMDB FETCH ─────────────────────────────────────────────── */
 async function tmdb(path) {
-  if (_tmdbCache.has(path)) return _tmdbCache.get(path);
   const sep = path.includes('?') ? '&' : '?';
   const url = `${TMDB_BASE}${path}${sep}api_key=${TMDB_KEY}&language=en-US`;
   const res  = await fetch(url);
   if (!res.ok) throw new Error(`TMDB ${res.status}`);
-  const json = await res.json();
-  _tmdbCache.set(path, json);
-  // Expire cache after 5 minutes
-  setTimeout(() => _tmdbCache.delete(path), 300000);
-  return json;
+  return res.json();
 }
 
 function posterUrl(path, size = 'w342') {
@@ -2089,18 +2251,18 @@ function setPlayerSrc() {
   switch (state.currentSource) {
     case 'vidsrc':
       url = type === 'movie'
-        ? `https://vidsrc.cc/v2/embed/movie/${id}`
-        : `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}`;
-      break;
-    case 'vidsrc2':
-      url = type === 'movie'
         ? `https://vidsrc.to/embed/movie/${id}`
         : `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`;
       break;
-    case 'vidsrccc':
+    case 'vidsrc2':
       url = type === 'movie'
         ? `https://vidsrc.me/embed/movie?tmdb=${id}`
         : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
+      break;
+    case 'vidsrccc':
+      url = type === 'movie'
+        ? `https://vidsrc.cc/v2/embed/movie/${id}`
+        : `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'autoembed':
       url = type === 'movie'
@@ -2114,8 +2276,8 @@ function setPlayerSrc() {
       break;
     case 'vsembed':
       url = type === 'movie'
-        ? `https://embed.su/embed/movie/${id}`
-        : `https://embed.su/embed/tv/${id}/${season}/${episode}`;
+        ? `https://vsembed.ru/embed/movie/${id}`
+        : `https://vsembed.ru/embed/tv/${id}/${season}/${episode}`;
       break;
   }
 
@@ -2677,35 +2839,9 @@ async function watchMatch(match) {
 
 function loadFootballStream(url) {
   const iframe = document.getElementById('player-iframe');
-  if (url.includes('.m3u8')) {
-    // Build an inline HLS player using hls.js
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000}video{width:100%;height:100vh;display:block}</style>
-</head><body>
-<video id="v" controls autoplay playsinline></video>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>
-<script>
-const v=document.getElementById('v');
-const src="${url.replace(/"/g, '\\"')}";
-if(Hls.isSupported()){const h=new Hls({enableWorker:true});h.loadSource(src);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));}
-else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch(()=>{});}
-<\/script></body></html>`;
-    iframe.src = 'about:blank';
-    iframe.onload = function() {
-      try {
-        iframe.contentDocument.open();
-        iframe.contentDocument.write(html);
-        iframe.contentDocument.close();
-      } catch(_) {
-        // Cross-origin fallback - open in new tab
-        window.open(url, '_blank');
-      }
-      iframe.onload = null;
-    };
-    iframe.src = 'about:blank';
-  } else {
-    iframe.src = url;
-  }
+  iframe.src = url.includes('.m3u8')
+    ? `${STREAMED_BASE}/player?url=${encodeURIComponent(url)}`
+    : url;
 }
 
 /* ═══════════════════════════════════════
@@ -2912,13 +3048,8 @@ function initApp() {
     const data = await res.json();
     HASH = (data.hash || '').toLowerCase().trim();
   } catch (_) {
-    HASH = '';
-  }
-
-  if (!HASH) {
-    document.getElementById('pw-error').textContent = 'Auth configuration error. Contact admin.';
-    document.getElementById('pw-submit').disabled = true;
-    return;
+    // Fallback hash for "stream2025"
+    HASH = 'b9552f656f0570b0a0da69564b0438dbb8b03dd6dd5a74ae4b2a3f60107aeb4e';
   }
 
   async function sha256(str) {
