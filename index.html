@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ReelWave</title>
+<link rel="dns-prefetch" href="https://api.themoviedb.org">
+<link rel="dns-prefetch" href="https://image.tmdb.org">
+<link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://image.tmdb.org" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════
@@ -1308,6 +1312,12 @@ main { padding-top: 64px; min-height: 100vh; }
 .mob-btn:hover  { color: var(--text-dim); }
 
 /* ═══════════════════════════════════════════════
+   PERFORMANCE
+═══════════════════════════════════════════════ */
+.tab-content:not(.active) { display: none; }
+.franchise-block { content-visibility: auto; contain-intrinsic-size: 0 340px; }
+
+/* ═══════════════════════════════════════════════
    RESPONSIVE — TABLET
 ═══════════════════════════════════════════════ */
 @media (max-width: 1024px) {
@@ -1428,12 +1438,12 @@ main { padding-top: 64px; min-height: 100vh; }
       <div>
         <div class="settings-row-label">Default Stream Source</div>
         <div class="settings-btn-row" id="settings-src-btns">
-          <button class="settings-src-btn active" data-src="vidsrc">VidSrc CC</button>
-          <button class="settings-src-btn" data-src="vidsrc2">Embed.su</button>
-          <button class="settings-src-btn" data-src="vidsrccc">AutoEmbed</button>
-          <button class="settings-src-btn" data-src="autoembed">2Embed</button>
-          <button class="settings-src-btn" data-src="superembed">MultiEmbed</button>
-          <button class="settings-src-btn" data-src="vsembed">NonStop</button>
+          <button class="settings-src-btn active" data-src="vidsrc">VidSrc</button>
+          <button class="settings-src-btn" data-src="vidsrc2">VidSrc 2</button>
+          <button class="settings-src-btn" data-src="vidsrccc">VidSrc 3</button>
+          <button class="settings-src-btn" data-src="autoembed">AutoEmbed</button>
+          <button class="settings-src-btn" data-src="superembed">SuperEmbed</button>
+          <button class="settings-src-btn" data-src="vsembed">VSEmbed</button>
         </div>
       </div>
       <div>
@@ -1597,6 +1607,7 @@ main { padding-top: 64px; min-height: 100vh; }
       <iframe id="player-iframe"
         allowfullscreen
         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+        referrerpolicy="no-referrer"
         title="Video player"></iframe>
     </div>
     <div id="episode-selector-wrap">
@@ -1609,12 +1620,12 @@ main { padding-top: 64px; min-height: 100vh; }
     </div>
     <div class="source-switcher" id="source-switcher">
       <span class="source-label">Source</span>
-      <button class="src-btn active" data-src="vidsrc">VidSrc CC</button>
-      <button class="src-btn" data-src="vidsrc2">Embed.su</button>
-      <button class="src-btn" data-src="vidsrccc">AutoEmbed</button>
-      <button class="src-btn" data-src="autoembed">2Embed</button>
-      <button class="src-btn" data-src="superembed">MultiEmbed</button>
-      <button class="src-btn" data-src="vsembed">NonStop</button>
+      <button class="src-btn active" data-src="vidsrc">VidSrc</button>
+      <button class="src-btn" data-src="vidsrc2">VidSrc 2</button>
+      <button class="src-btn" data-src="vidsrccc">VidSrc 3</button>
+      <button class="src-btn" data-src="autoembed">AutoEmbed</button>
+      <button class="src-btn" data-src="superembed">SuperEmbed</button>
+      <button class="src-btn" data-src="vsembed">VSEmbed</button>
     </div>
   </div>
 </div>
@@ -1649,47 +1660,110 @@ main { padding-top: 64px; min-height: 100vh; }
 
 /* ─── AD BLOCKING (runs immediately) ─────────────────────────── */
 (function adBlock() {
-  // Block all window.open calls (stops popup ads and redirect tabs)
-  window.open = () => null;
+  // 1. Block window.open popups from iframes
+  const _open = window.open;
+  window.open = function(url, name, features) {
+    if (!url || url === '' || url === 'about:blank') return _open.call(this, url, name, features);
+    return null;
+  };
 
-  // Intercept clicks that try to navigate the top frame (redirect ads)
-  window.addEventListener('click', e => {
-    const a = e.target.closest('a');
-    if (a && a.target === '_blank' && !a.closest('#app-content header, .player-container')) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }, true);
-
-  // Block beforeunload redirect attempts when player is open
+  // 2. Warn before unload only when player is active
   window.addEventListener('beforeunload', e => {
-    if (document.getElementById('player-modal')?.classList.contains('active')) {
-      e.preventDefault();
-      e.returnValue = '';
-    }
+    const modal = document.getElementById('player-modal');
+    if (modal && modal.classList.contains('active')) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  // Block notification/push permission prompts
+  // 3. Block notification permission
   if ('Notification' in window) {
-    try { Object.defineProperty(Notification, 'requestPermission', { value: () => Promise.resolve('denied'), configurable: false }); } catch (_) {}
-  }
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready.then(r => {
-      if (r?.pushManager) r.pushManager.subscribe = () => Promise.reject(new Error('blocked'));
-    }).catch(() => {});
+    try {
+      Object.defineProperty(Notification, 'requestPermission', {
+        value: () => Promise.resolve('denied'), writable: true, configurable: true
+      });
+    } catch (_) {}
   }
 
-  // Sweep injected overlay ads (fixed-position elements with very high z-index that aren't ours)
-  const OWN = new Set(['player-modal','settings-modal','pw-gate','mobile-nav','source-switcher']);
-  function sweepOverlays() {
-    document.querySelectorAll('body > *:not(#app-content):not(#pw-gate):not(script):not(style)').forEach(el => {
-      if (OWN.has(el.id)) return;
-      const st = window.getComputedStyle(el);
-      if ((st.position === 'fixed' || st.position === 'absolute') && parseInt(st.zIndex) > 9000) el.remove();
-    });
+  // 4. Block push subscriptions
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then(reg => { if (reg?.pushManager) reg.pushManager.subscribe = () => Promise.reject(new Error('blocked')); })
+      .catch(() => {});
   }
-  [1000, 3000, 6000].forEach(t => setTimeout(sweepOverlays, t));
-  setInterval(sweepOverlays, 10000);
+
+  // 5. Override document.write for ad injection attempts
+  const _dw = document.write.bind(document);
+  document.write = function(html) {
+    const blocked = ['adsense', 'doubleclick', 'popads', 'adsbygoogle', 'googletag'];
+    if (typeof html === 'string' && blocked.some(p => html.includes(p))) return;
+    _dw(html);
+  };
+
+  // 6. Block eval-based popunders
+  const _eval = window.eval;
+  window.eval = function(code) {
+    const blocked = ['popunder', 'clickunder', 'popads', 'popcash', 'trafficjunky'];
+    if (typeof code === 'string' && blocked.some(p => code.includes(p))) return undefined;
+    return _eval.call(this, code);
+  };
+
+  // 7. Helper: safe className for SVG elements
+  function safeClass(node) {
+    try {
+      const c = node.className;
+      if (!c) return '';
+      return (typeof c === 'string' ? c : (c.baseVal || '')).toLowerCase();
+    } catch (_) { return ''; }
+  }
+
+  // 8. Ad node detector
+  const OWN_IDS = new Set(['player-modal','player-iframe','pw-gate','mobile-nav',
+    'settings-modal','app-content','hero-section','scream-row','movies-grid','tv-grid',
+    'matches-grid','franchise-view','source-switcher']);
+  const AD_TOKENS = ['adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard',
+    'interstitial','ad-overlay','adoverlay','sticky-ad','popunder','clickunder','admodal',
+    'gpt-ad','div-gpt','google_ads','carbonads','ez-ad'];
+  const AD_SRCS = ['doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
+    'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash','propellerads',
+    'adsterra','adcash','juicyads','yllix','evadav','richpush','coinzilla','a-ads.com'];
+  const AD_SCRIPTS = ['adsbygoogle','googletag','popads.net','popcash.net','exoclick',
+    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot','minero.cc','webmr.ru'];
+
+  function isAdNode(node) {
+    if (!node || node.nodeType !== 1) return false;
+    const tag = (node.tagName || '').toLowerCase();
+    const id  = (node.id  || '').toLowerCase();
+    const cls = safeClass(node);
+    const src = node.src || node.href || '';
+    if (OWN_IDS.has(node.id) || OWN_IDS.has(id)) return false;
+    const zi = parseInt(node.style?.zIndex || 0, 10);
+    const pos = node.style?.position;
+    if ((pos === 'fixed' || pos === 'absolute') && zi > 9999) return true;
+    if (AD_TOKENS.some(t => id.includes(t) || cls.includes(t))) return true;
+    if (tag === 'iframe' && node.id !== 'player-iframe' && AD_SRCS.some(s => src.includes(s))) return true;
+    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent || '').includes(s))) return true;
+    return false;
+  }
+
+  const AD_SELECTORS = ['.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
+    '[class*="popunder"]','[class*="clickunder"]'];
+
+  new MutationObserver(muts => {
+    muts.forEach(m => {
+      m.addedNodes.forEach(n => {
+        if (isAdNode(n)) { n.remove(); return; }
+        if (n.nodeType === 1) AD_SELECTORS.forEach(s => { try { n.querySelectorAll(s).forEach(e => e.remove()); } catch (_) {} });
+      });
+      if (m.type === 'attributes' && isAdNode(m.target)) m.target.remove();
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class'] });
+
+  function sweep() {
+    AD_SELECTORS.forEach(s => {
+      try { document.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch (_) {}
+    });
+    try { document.querySelectorAll('div,iframe,ins').forEach(e => { if (isAdNode(e)) e.remove(); }); } catch (_) {}
+  }
+  [600, 2200, 5000].forEach(t => setTimeout(sweep, t));
+  setInterval(sweep, 12000);
 })();
 
 /* ─── CONSTANTS ────────────────────────────────────────────── */
@@ -1720,13 +1794,19 @@ let state = {
 const matchMap = new Map();
 let matchCounter = 0;
 
-/* ─── TMDB FETCH ─────────────────────────────────────────────── */
+/* ─── TMDB FETCH with cache ───────────────────────────────── */
+const _tmdbCache = new Map();
 async function tmdb(path) {
+  if (_tmdbCache.has(path)) return _tmdbCache.get(path);
   const sep = path.includes('?') ? '&' : '?';
   const url = `${TMDB_BASE}${path}${sep}api_key=${TMDB_KEY}&language=en-US`;
   const res  = await fetch(url);
   if (!res.ok) throw new Error(`TMDB ${res.status}`);
-  return res.json();
+  const json = await res.json();
+  _tmdbCache.set(path, json);
+  // Expire cache after 5 minutes
+  setTimeout(() => _tmdbCache.delete(path), 300000);
+  return json;
 }
 
 function posterUrl(path, size = 'w342') {
@@ -2008,40 +2088,34 @@ function setPlayerSrc() {
 
   switch (state.currentSource) {
     case 'vidsrc':
-      // vidsrc.cc — currently most reliable
       url = type === 'movie'
         ? `https://vidsrc.cc/v2/embed/movie/${id}`
         : `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'vidsrc2':
-      // embed.su — working replacement for dead vidsrc.me
       url = type === 'movie'
-        ? `https://embed.su/embed/movie/${id}`
-        : `https://embed.su/embed/tv/${id}/${season}/${episode}`;
+        ? `https://vidsrc.to/embed/movie/${id}`
+        : `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'vidsrccc':
-      // autoembed — reliable
+      url = type === 'movie'
+        ? `https://vidsrc.me/embed/movie?tmdb=${id}`
+        : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
+      break;
+    case 'autoembed':
       url = type === 'movie'
         ? `https://player.autoembed.cc/embed/movie/${id}`
         : `https://player.autoembed.cc/embed/tv/${id}/${season}/${episode}`;
       break;
-    case 'autoembed':
-      // 2embed — working
-      url = type === 'movie'
-        ? `https://www.2embed.cc/embed/${id}`
-        : `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
-      break;
     case 'superembed':
-      // multiembed — working
       url = type === 'movie'
         ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
         : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`;
       break;
     case 'vsembed':
-      // non-stop — working
       url = type === 'movie'
-        ? `https://www.NonStopMovie.link/embed/?tmdb=${id}&type=movie`
-        : `https://www.NonStopMovie.link/embed/?tmdb=${id}&type=tv&s=${season}&e=${episode}`;
+        ? `https://embed.su/embed/movie/${id}`
+        : `https://embed.su/embed/tv/${id}/${season}/${episode}`;
       break;
   }
 
@@ -2052,12 +2126,12 @@ function resetSourceSwitcher() {
   const switcher = document.getElementById('source-switcher');
   switcher.innerHTML = '<span class="source-label">Source</span>';
   const sources = [
-    { key: 'vidsrc',     label: 'VidSrc CC'  },
-    { key: 'vidsrc2',    label: 'Embed.su'   },
-    { key: 'vidsrccc',   label: 'AutoEmbed'  },
-    { key: 'autoembed',  label: '2Embed'     },
-    { key: 'superembed', label: 'MultiEmbed' },
-    { key: 'vsembed',    label: 'NonStop'    },
+    { key: 'vidsrc',    label: 'VidSrc'    },
+    { key: 'vidsrc2',   label: 'VidSrc 2'  },
+    { key: 'vidsrccc',  label: 'VidSrc 3'  },
+    { key: 'autoembed', label: 'AutoEmbed' },
+    { key: 'superembed',label: 'SuperEmbed'},
+    { key: 'vsembed',   label: 'VSEmbed'   },
   ];
   sources.forEach(({ key, label }) => {
     const btn = document.createElement('button');
@@ -2604,21 +2678,31 @@ async function watchMatch(match) {
 function loadFootballStream(url) {
   const iframe = document.getElementById('player-iframe');
   if (url.includes('.m3u8')) {
+    // Build an inline HLS player using hls.js
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000}video{width:100vw;height:100vh;display:block}</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000}video{width:100%;height:100vh;display:block}</style>
 </head><body>
 <video id="v" controls autoplay playsinline></video>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>
 <script>
-var v=document.getElementById('v'),src=${JSON.stringify(url)};
-if(Hls.isSupported()){var h=new Hls({enableWorker:true,lowLatencyMode:true});h.loadSource(src);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});});}
-else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch(function(){});}
+const v=document.getElementById('v');
+const src="${url.replace(/"/g, '\\"')}";
+if(Hls.isSupported()){const h=new Hls({enableWorker:true});h.loadSource(src);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));}
+else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch(()=>{});}
 <\/script></body></html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const prev = iframe._blobUrl;
-    iframe._blobUrl = URL.createObjectURL(blob);
-    iframe.src = iframe._blobUrl;
-    if (prev) setTimeout(() => URL.revokeObjectURL(prev), 5000);
+    iframe.src = 'about:blank';
+    iframe.onload = function() {
+      try {
+        iframe.contentDocument.open();
+        iframe.contentDocument.write(html);
+        iframe.contentDocument.close();
+      } catch(_) {
+        // Cross-origin fallback - open in new tab
+        window.open(url, '_blank');
+      }
+      iframe.onload = null;
+    };
+    iframe.src = 'about:blank';
   } else {
     iframe.src = url;
   }
@@ -2828,8 +2912,13 @@ function initApp() {
     const data = await res.json();
     HASH = (data.hash || '').toLowerCase().trim();
   } catch (_) {
-    // Fallback hash for "stream2025"
-    HASH = 'b9552f656f0570b0a0da69564b0438dbb8b03dd6dd5a74ae4b2a3f60107aeb4e';
+    HASH = '';
+  }
+
+  if (!HASH) {
+    document.getElementById('pw-error').textContent = 'Auth configuration error. Contact admin.';
+    document.getElementById('pw-submit').disabled = true;
+    return;
   }
 
   async function sha256(str) {
