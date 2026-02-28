@@ -4,6 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ReelWave</title>
+<!-- ══ SERVICE WORKER REGISTRATION — intercepts all navigations ══ -->
+<script>
+(function(){
+  'use strict';
+  if(!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js', {scope:'/'})
+    .then(reg => {
+      reg.update();
+      if(reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if(sw) sw.addEventListener('statechange', () => {
+          if(sw.state==='installed' && navigator.serviceWorker.controller)
+            sw.postMessage('SKIP_WAITING');
+        });
+      });
+    })
+    .catch(e => console.warn('[RW] SW failed:', e));
+})();
+</script>
 <link rel="dns-prefetch" href="https://api.themoviedb.org">
 <link rel="dns-prefetch" href="https://image.tmdb.org">
 <link rel="dns-prefetch" href="https://fonts.googleapis.com">
@@ -2366,51 +2386,59 @@ function setEpisode() {
 /* ═══════════════════════════════════════
    PLAYER SRC
 ═══════════════════════════════════════ */
+// Wrap an embed URL through our server-side frame proxy.
+// The proxy fetches the page, injects our kill script, strips ad scripts,
+// then serves it back — this means the iframe content is under our control.
+function frameUrl(rawUrl) {
+  return `/api/frame?url=${encodeURIComponent(rawUrl)}`;
+}
+
 function setPlayerSrc() {
   const m = state.currentMedia;
   if (!m || m.type === 'football') return;
   const { type, id, season, episode } = m;
-  let url = '';
+  let rawUrl = '';
 
   switch (state.currentSource) {
     case 'vidsrc':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://vidsrc.cc/v2/embed/movie/${id}`
         : `https://vidsrc.cc/v2/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'vidsrc2':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://vidsrc.to/embed/movie/${id}`
         : `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'vidsrccc':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://vidsrc.me/embed/movie?tmdb=${id}`
         : `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
       break;
     case 'autoembed':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://player.autoembed.cc/embed/movie/${id}`
         : `https://player.autoembed.cc/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'superembed':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://multiembed.mov/?video_id=${id}&tmdb=1`
         : `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`;
       break;
     case 'vsembed':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://embed.su/embed/movie/${id}`
         : `https://embed.su/embed/tv/${id}/${season}/${episode}`;
       break;
     case 'vidlink':
-      url = type === 'movie'
+      rawUrl = type === 'movie'
         ? `https://vidlink.pro/movie/${id}`
         : `https://vidlink.pro/tv/${id}/${season}/${episode}`;
       break;
   }
 
-  document.getElementById('player-iframe').src = url;
+  // Route through our server-side frame proxy for maximum ad protection
+  document.getElementById('player-iframe').src = frameUrl(rawUrl);
 }
 
 function resetSourceSwitcher() {
@@ -2970,7 +2998,7 @@ async function watchMatch(match) {
 function loadFootballStream(url) {
   const iframe = document.getElementById('player-iframe');
   if (url.includes('.m3u8')) {
-    // Build an inline HLS player using hls.js
+    // HLS streams: build inline player (no redirect risk from .m3u8 files)
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000}video{width:100%;height:100vh;display:block}</style>
 </head><body>
@@ -2989,12 +3017,14 @@ else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch
         iframe.contentDocument.write(html);
         iframe.contentDocument.close();
       } catch(_) {
-        // Cross-origin fallback — just set src directly
         iframe.src = url;
       }
       iframe.onload = null;
     };
     iframe.src = 'about:blank';
+  } else if (url.startsWith('http')) {
+    // Route embed URLs through our frame proxy for ad protection
+    iframe.src = frameUrl(url);
   } else {
     iframe.src = url;
   }
