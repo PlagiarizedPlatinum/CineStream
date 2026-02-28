@@ -19,9 +19,11 @@
         { "key": "X-Frame-Options",        "value": "SAMEORIGIN" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy",        "value": "no-referrer-when-downgrade" },
+        { "key": "X-DNS-Prefetch-Control", "value": "off" },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" },
         {
           "key": "Permissions-Policy",
-          "value": "geolocation=(), microphone=(), camera=(), payment=(), usb=(), notifications=(), push=(), interest-cohort=()"
+          "value": "geolocation=(), microphone=(), camera=(), payment=(), usb=(), notifications=(), push=(), interest-cohort=(), browsing-topics=()"
         },
         {
           "key": "Content-Security-Policy",
@@ -32,8 +34,13 @@
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control",          "value": "no-store, no-cache, must-revalidate, private" },
         { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    },
+    {
+      "source": "/api/tmdb",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
       ]
     }
   ]
