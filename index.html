@@ -752,15 +752,6 @@ main { padding-top: 64px; min-height: 100vh; }
 ═══════════════════════════════════════════════ */
 #search-results-section { display: none; }
 
-/* iframe popup shield — transparent interceptor layer */
-#rw-iframe-shield {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  background: transparent;
-  cursor: default;
-}
-
 /* ═══════════════════════════════════════════════
    PLAYER MODAL
 ═══════════════════════════════════════════════ */
@@ -1685,279 +1676,379 @@ main { padding-top: 64px; min-height: 100vh; }
 <script>
 'use strict';
 
-/* ─── ULTIMATE POPUP / AD BLOCKER ────────────────────────────── */
-(function() {
+/* ─── POPUP & AD BLOCKER v2 (runs immediately, maximum strength) ─── */
+(function adBlock() {
   'use strict';
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 1 — KILL window.open EVERYWHERE, PERMANENTLY
-     The #1 popup vector. Streaming embeds call window.open() on
-     click or on load. We nuke it at the prototype level so it
-     cannot be restored by iframe scripts.
-  ══════════════════════════════════════════════════════════════ */
-  const noop = () => null;
-  window.open = noop;
-  try { Window.prototype.open = noop; } catch(_) {}
-  // Re-apply every 50ms for the first 10s in case any script restores it
-  let _openGuard = 0;
-  const openGuardInterval = setInterval(() => {
-    if (window.open !== noop) window.open = noop;
-    if (++_openGuard > 200) clearInterval(openGuardInterval);
-  }, 50);
+  // ════════════════════════════════════════════════════════
+  // 1. NUCLEAR window.open — block every variant
+  // ════════════════════════════════════════════════════════
+  const _noop = () => null;
+  window.open = _noop;
+  try { Object.defineProperty(window, 'open', { value: _noop, writable: false, configurable: false }); } catch(_) {}
+  // Kill opener so cross-frame scripts can't reference back
+  try { Object.defineProperty(window, 'opener', { get: () => null, set: () => {}, configurable: false }); } catch(_) {}
+  // Null out window.name — used by some popunder networks to pass state
+  try { Object.defineProperty(window, 'name', { get: () => '', set: () => {}, configurable: false }); } catch(_) {}
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 2 — IFRAME CLICK SHIELD (the real fix for cross-origin)
-     Cross-origin iframes can't be blocked at the JS level from
-     the parent. The ONLY reliable method is to place an invisible
-     div on top of the iframe that intercepts all pointer events.
-     We lift it for 700ms when the user intentionally clicks a
-     player control (play/pause/seek bar area at bottom 15%).
-  ══════════════════════════════════════════════════════════════ */
-  let shieldEnabled = true;
-  let shieldLiftTimer = null;
+  // ════════════════════════════════════════════════════════
+  // 2. Lock window.location — prevent iframes / injected scripts
+  //    from redirecting the top-level page via location.href,
+  //    location.replace(), location.assign(), or history tricks
+  // ════════════════════════════════════════════════════════
+  (function lockLocation() {
+    const _replace = location.replace.bind(location);
+    const _assign  = location.assign.bind(location);
+    // Wrap assign/replace — only allow same-origin internal navigation
+    const sameOrigin = (url) => { try { return new URL(url, location.href).origin === location.origin; } catch(_) { return false; } };
+    try {
+      Object.defineProperty(location, 'href', {
+        get() { return window.location.href; },
+        set(v) { if (sameOrigin(v)) { _assign(v); } else { console.warn('[RW] Blocked location.href redirect to:', v); } },
+        configurable: false,
+      });
+    } catch(_) {}
+    try { location.replace = (url) => { if (sameOrigin(url)) _replace(url); else console.warn('[RW] Blocked location.replace:', url); }; } catch(_) {}
+    try { location.assign  = (url) => { if (sameOrigin(url)) _assign(url);  else console.warn('[RW] Blocked location.assign:', url);  }; } catch(_) {}
 
-  function createShield() {
-    const existing = document.getElementById('rw-iframe-shield');
-    if (existing) return existing;
-    const shield = document.createElement('div');
-    shield.id = 'rw-iframe-shield';
-    shield.style.cssText = [
-      'position:absolute',
-      'inset:0',
-      'z-index:10',
-      'cursor:pointer',
-      'background:transparent',
-      // Block all pointer events by default
-    ].join(';');
-    shield.setAttribute('aria-hidden', 'true');
+    // Block history state abuse (some networks use pushState to hide redirect chains)
+    const _push    = history.pushState.bind(history);
+    const _replace2 = history.replaceState.bind(history);
+    try {
+      history.pushState    = (s,t,url) => { if (!url || sameOrigin(String(url))) _push(s,t,url); };
+      history.replaceState = (s,t,url) => { if (!url || sameOrigin(String(url))) _replace2(s,t,url); };
+    } catch(_) {}
 
-    // When user clicks the shield (i.e. intentional click on player area):
-    // lift shield briefly so the click passes through to player controls
-    shield.addEventListener('click', function(e) {
-      liftShield(700);
-      // Re-dispatch the click so it reaches the iframe
-      e.stopPropagation();
-    });
+    // Hard-stop beforeunload/unload redirect attempts from injected scripts
+    window.addEventListener('beforeunload', e => {
+      // Only cancel if triggered outside normal navigation (e.g. by a script)
+      e.preventDefault();
+      e.returnValue = '';
+    }, { capture: true });
+  })();
 
-    // Also allow mousedown to reach player (for drag-seek)
-    shield.addEventListener('mousedown', function(e) {
-      // Only lift for bottom 20% of player (control bar area)
-      const rect = shield.getBoundingClientRect();
-      const relY = (e.clientY - rect.top) / rect.height;
-      if (relY > 0.8) {
-        liftShield(1500);
-      } else {
-        liftShield(700);
-      }
-    });
-
-    return shield;
-  }
-
-  function liftShield(ms) {
-    clearTimeout(shieldLiftTimer);
-    const shield = document.getElementById('rw-iframe-shield');
-    if (shield) shield.style.pointerEvents = 'none';
-    shieldLiftTimer = setTimeout(() => {
-      const s = document.getElementById('rw-iframe-shield');
-      if (s) s.style.pointerEvents = 'auto';
-    }, ms);
-  }
-
-  function attachShield() {
-    const wrap = document.querySelector('.player-wrap');
-    if (!wrap || document.getElementById('rw-iframe-shield')) return;
-    const shield = createShield();
-    wrap.style.position = 'relative';
-    wrap.appendChild(shield);
-  }
-
-  // Attach shield whenever player opens
-  const _playerOpen = () => { requestAnimationFrame(attachShield); };
-
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 3 — BLOCK ALL NAVIGATION / LOCATION CHANGES
-     Streaming scripts do: window.top.location = '...', or create
-     <a target=_top> etc. Block every vector.
-  ══════════════════════════════════════════════════════════════ */
-
-  // Block beforeunload redirects
-  window.addEventListener('beforeunload', e => {
-    e.preventDefault(); e.returnValue = ''; return '';
-  }, true);
-
-  // Block document-level link clicks that target outside the page
+  // ════════════════════════════════════════════════════════
+  // 3. Block all _blank / external link clicks not in our UI
+  // ════════════════════════════════════════════════════════
   document.addEventListener('click', function(e) {
-    const a = e.target.closest('a');
+    const a = e.target.closest('a[href]');
     if (!a) return;
-    const href  = (a.getAttribute('href') || '').toLowerCase();
-    const tgt   = (a.getAttribute('target') || '');
-    const isExt = href.startsWith('http') || href.startsWith('//') || href.startsWith('javascript');
-    const isNewTab = tgt === '_blank' || tgt === '_top' || tgt === '_parent';
-    if (isExt || isNewTab) {
-      if (!a.closest('#app-content header') && !a.closest('#pw-gate')) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+    const href = (a.getAttribute('href') || '').trim();
+    if (a.target === '_blank' || href.startsWith('http') || href.startsWith('//') || href.startsWith('javascript:')) {
+      if (!a.closest('#app-content') && !a.closest('#pw-gate')) {
+        e.preventDefault(); e.stopImmediatePropagation();
       }
     }
   }, true);
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 4 — postMessage INTERCEPTION
-     Some embeds send postMessage to parent to trigger navigation.
-  ══════════════════════════════════════════════════════════════ */
+  // ════════════════════════════════════════════════════════
+  // 4. Block programmatic anchor click() abuse
+  //    (ad scripts do: const a = document.createElement('a'); a.href='…'; a.click())
+  // ════════════════════════════════════════════════════════
+  const _origClick = HTMLElement.prototype.click;
+  HTMLElement.prototype.click = function() {
+    if (this.tagName === 'A') {
+      const href = (this.getAttribute('href') || '').trim();
+      if (this.target === '_blank' || href.startsWith('http') || href.startsWith('javascript:')) {
+        if (!this.closest('#app-content') && !this.closest('#pw-gate') && !document.body.contains(this)) {
+          console.warn('[RW] Blocked detached anchor click:', href);
+          return;
+        }
+      }
+    }
+    return _origClick.call(this);
+  };
+
+  // ════════════════════════════════════════════════════════
+  // 5. Intercept postMessage redirect/popup instructions
+  // ════════════════════════════════════════════════════════
   window.addEventListener('message', function(e) {
     try {
       const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data || '');
-      const bad = ['window.open','popunder','clickunder','location.href','location=',
-                   'location.replace','location.assign','_blank','_top','redirect','navigate'];
+      const bad = ['window.open','popunder','clickunder','location.href','location.replace',
+                   'location.assign','_blank','redirect','popads','popcash','adsterra'];
       if (bad.some(b => raw.toLowerCase().includes(b))) {
         e.stopImmediatePropagation();
       }
     } catch(_) {}
   }, true);
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 5 — BLOCK NOTIFICATION / PUSH / PERMISSION APIS
-  ══════════════════════════════════════════════════════════════ */
-  const denied = () => Promise.resolve('denied');
+  // ════════════════════════════════════════════════════════
+  // 6. Block focus/blur tricks — ad networks hijack window blur
+  //    to fire popunders when the user clicks anywhere on the page
+  // ════════════════════════════════════════════════════════
+  let _blurSuppress = false;
+  window.addEventListener('blur', function(e) {
+    if (_blurSuppress) { e.stopImmediatePropagation(); return; }
+    // Suppress for 300ms after any click to prevent click→blur→popup chains
+    _blurSuppress = true;
+    setTimeout(() => { _blurSuppress = false; }, 300);
+  }, true);
+
+  // ════════════════════════════════════════════════════════
+  // 7. Block Notification / Push subscription abuse
+  // ════════════════════════════════════════════════════════
   if ('Notification' in window) {
-    try { Object.defineProperty(Notification, 'requestPermission', { value: denied, configurable: false, writable: false }); } catch(_) {}
-    try { Object.defineProperty(Notification, 'permission', { get: () => 'denied', configurable: false }); } catch(_) {}
-  }
-  if (navigator.permissions) {
-    const _query = navigator.permissions.query.bind(navigator.permissions);
-    navigator.permissions.query = p => p?.name === 'notifications' ? Promise.resolve({ state: 'denied' }) : _query(p);
+    try {
+      Object.defineProperty(Notification, 'requestPermission', { value: () => Promise.resolve('denied'), writable: false, configurable: false });
+      Object.defineProperty(Notification, 'permission', { get: () => 'denied', configurable: false });
+    } catch(_) {}
   }
   if (navigator.serviceWorker) {
     navigator.serviceWorker.ready.then(r => {
-      if (r?.pushManager) r.pushManager.subscribe = () => Promise.reject('blocked');
-    }).catch(()=>{});
+      if (r?.pushManager) r.pushManager.subscribe = () => Promise.reject(new Error('blocked'));
+    }).catch(() => {});
   }
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 6 — EVAL / FUNCTION CONSTRUCTOR ABUSE
-  ══════════════════════════════════════════════════════════════ */
-  const BAD_CODE = ['popunder','clickunder','window.open','open(','_blank','adsterra',
-                    'popads','popcash','propellerads','trafficjunky','exoclick','hilltopads'];
+  // ════════════════════════════════════════════════════════
+  // 8. Wrap eval / Function() — strip known ad network payloads
+  // ════════════════════════════════════════════════════════
   const _eval = window.eval;
+  const BAD_EVAL = ['popunder','clickunder','popads','popcash','window.open(','adsterra',
+                    'propellerads','trafficjunky','exoclick','hilltopads','clickadu'];
   window.eval = function(c) {
-    if (typeof c === 'string' && BAD_CODE.some(b => c.toLowerCase().includes(b))) return undefined;
+    if (typeof c === 'string' && BAD_EVAL.some(b => c.includes(b))) { console.warn('[RW] Blocked eval'); return undefined; }
     return _eval.call(this, c);
   };
-  try { Object.defineProperty(window, 'eval', { value: window.eval }); } catch(_) {}
+  // Block Function('...')() abuse too
+  const _Function = window.Function;
+  window.Function = function(...args) {
+    const body = args[args.length - 1] || '';
+    if (typeof body === 'string' && BAD_EVAL.some(b => body.includes(b))) { console.warn('[RW] Blocked Function()'); return () => {}; }
+    return _Function(...args);
+  };
+  Object.setPrototypeOf(window.Function, _Function);
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 7 — document.write BLOCK
-  ══════════════════════════════════════════════════════════════ */
+  // ════════════════════════════════════════════════════════
+  // 9. Block document.write ad injection
+  // ════════════════════════════════════════════════════════
   const _dw = document.write.bind(document);
   document.write = function(h) {
-    const bad = ['adsense','doubleclick','popads','adsbygoogle','googletag','exoclick','popunder'];
-    if (typeof h === 'string' && bad.some(b => h.toLowerCase().includes(b))) return;
+    const bad = ['adsense','doubleclick','popads','adsbygoogle','googletag','exoclick','popunder','adsterra'];
+    if (typeof h === 'string' && bad.some(b => h.toLowerCase().includes(b))) { console.warn('[RW] Blocked document.write'); return; }
     _dw(h);
   };
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 8 — DOM INJECTION BLOCKER
-     MutationObserver kills ad nodes the instant they're added.
-  ══════════════════════════════════════════════════════════════ */
-  const OWN = new Set(['player-modal','player-iframe','player-container','player-wrap',
-    'rw-iframe-shield','pw-gate','mobile-nav','settings-modal','app-content',
-    'hero-section','scream-row','movies-grid','tv-grid','matches-grid','franchise-view',
-    'source-switcher','episode-selector-wrap','season-select','episode-select',
-    'hero-bg','hero-dots','search-input','main-nav']);
+  // ════════════════════════════════════════════════════════
+  // 10. Wrap setTimeout/setInterval — kill delayed ad injections
+  //     (very common: setTimeout("window.open(...)", 2000))
+  // ════════════════════════════════════════════════════════
+  const _setTimeout   = window.setTimeout;
+  const _setInterval  = window.setInterval;
+  const BAD_TIMER = ['window.open','popunder','clickunder','location.href','location.replace','adsterra','popads'];
+  window.setTimeout = function(fn, delay, ...args) {
+    if (typeof fn === 'string' && BAD_TIMER.some(b => fn.includes(b))) { console.warn('[RW] Blocked setTimeout'); return 0; }
+    return _setTimeout.call(this, fn, delay, ...args);
+  };
+  window.setInterval = function(fn, delay, ...args) {
+    if (typeof fn === 'string' && BAD_TIMER.some(b => fn.includes(b))) { console.warn('[RW] Blocked setInterval'); return 0; }
+    return _setInterval.call(this, fn, delay, ...args);
+  };
 
-  const AD_ID_CLS = ['adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard',
-    'interstitial','ad-overlay','adoverlay','sticky-ad','popunder','clickunder',
-    'admodal','gpt-ad','div-gpt','google_ads','carbonads','ez-ad','advertisement',
-    'preroll','midroll','overlay-ad','sponsor','promo-popup','ad_container',
-    'adcontainer','ad-frame','adframe','ad-slot','adslot','push-notif','pushnotif'];
+  // ════════════════════════════════════════════════════════
+  // 11. Ad node identification — checks BOTH inline AND computed styles
+  // ════════════════════════════════════════════════════════
+  function safeClass(node) {
+    try { const c = node.className; return (typeof c === 'string' ? c : (c.baseVal||'')).toLowerCase(); } catch(_) { return ''; }
+  }
 
-  const AD_SRCS = ['doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
-    'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash','propellerads',
-    'adsterra','adcash','juicyads','yllix','evadav','richpush','coinzilla','a-ads.com',
-    'revcontent','taboola','mgid','hilltopads','clickadu','zeropark','voluum',
-    'bongacash','plugrush','royalads','adspyglass','ero-advertising'];
+  // IDs/classes that belong to our own UI — never touch these
+  const OWN_IDS = new Set([
+    'player-modal','player-iframe','pw-gate','mobile-nav','settings-modal',
+    'app-content','hero-section','hero-section','scream-row','movies-grid',
+    'tv-grid','matches-grid','franchise-view','source-switcher',
+    'episode-selector-wrap','player-container','player-header',
+    'player-wrap','player-close','dyn-card-style','main-nav',
+    'search-input','search-results-section','search-results-grid',
+    'hero-bg','hero-vignette','hero-content','hero-dots',
+    'movies-tab','tv-tab','football-tab','settings-modal',
+  ]);
 
-  const AD_SCRIPTS = ['adsbygoogle','googletag','popads.net','popcash.net','exoclick',
-    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot','minero.cc',
-    'hilltopads','plugrush','royalads','adspyglass'];
+  // Ancestry guard: is `el` inside one of our own containers?
+  function isOwnElement(el) {
+    if (!el) return false;
+    if (OWN_IDS.has(el.id)) return true;
+    return !!(el.closest('#player-modal') || el.closest('#settings-modal') ||
+              el.closest('#pw-gate')      || el.closest('#app-content'));
+  }
 
-  const AD_SEL = [
-    '.adsbygoogle','ins.adsbygoogle',
-    '[id*="google_ads"]','[id*="div-gpt-ad"]','[id*="gpt-ad"]',
-    '[class*="popunder"]','[class*="clickunder"]','[id*="popunder"]',
-    '[class*="interstitial"]','[id*="interstitial"]',
-    '[class*="ad-overlay"]','[id*="ad-overlay"]',
-    '[class*="push-notif"]','[id*="push-notif"]',
-    '[class*="admodal"]','[id*="admodal"]',
-    'iframe[src*="doubleclick"]','iframe[src*="googlesyndication"]',
-    'iframe[src*="exoclick"]','iframe[src*="trafficjunky"]',
-    'iframe[src*="popads"]','iframe[src*="adsterra"]',
+  const AD_TOKENS = [
+    'adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard',
+    'interstitial','ad-overlay','adoverlay','sticky-ad','popunder',
+    'clickunder','admodal','gpt-ad','div-gpt','google_ads','carbonads',
+    'ez-ad','advertisement','preroll','modal-ad','ad_wrap','sponsor',
+    'promo-banner','popup','pop-up','popads','popcash','adsterra',
+    'propeller','richpush','coinzilla','juicyads','yllix','evadav',
+    'trafficjunky','exoclick','zeropark','mgid','taboola','revcontent',
+    'hilltopads','clickadu','adcash','a-ads',
   ];
 
-  function cls(n) {
-    try { const c = n.className; return (typeof c === 'string' ? c : c.baseVal || '').toLowerCase(); } catch(_) { return ''; }
-  }
+  const AD_SRCS = [
+    'doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
+    'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash',
+    'propellerads','adsterra','adcash','juicyads','yllix','evadav',
+    'richpush','coinzilla','a-ads.com','revcontent','taboola','mgid',
+    'hilltopads','clickadu','zeropark','adform','adkernel','33across',
+    'smartadserver','criteo','appnexus','lijit','sovrn','bidswitch',
+    'media.net','yieldmo','sharethrough','undertone','conversantmedia',
+  ];
 
-  function isAd(node) {
+  const AD_SCRIPTS = [
+    'adsbygoogle','googletag','popads.net','popcash.net','exoclick',
+    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot',
+    'popunder','clickunder','adcash','hilltopads',
+  ];
+
+  function isAdOverlay(node) {
     if (!node || node.nodeType !== 1) return false;
-    if (OWN.has(node.id)) return false;
-    if (node.closest && (node.closest('#player-modal') || node.closest('#pw-gate') || node.closest('#settings-modal'))) return false;
-    const tag = (node.tagName || '').toLowerCase();
+    if (isOwnElement(node)) return false;
+
     const id  = (node.id  || '').toLowerCase();
-    const cl  = cls(node);
+    const cls = safeClass(node);
+    if (AD_TOKENS.some(t => id.includes(t) || cls.includes(t))) return true;
+
+    const tag = (node.tagName || '').toLowerCase();
     const src = (node.src || node.href || '').toLowerCase();
-    const st  = node.style || {};
-    const zi  = parseInt(st.zIndex || 0, 10);
-    const pos = st.position || '';
-    // High z-index fixed/absolute overlay not inside our UI
-    if ((pos === 'fixed' || pos === 'absolute') && zi > 1000 && !node.closest('#player-modal') && !node.closest('#settings-modal') && !node.closest('#pw-gate')) return true;
-    if (AD_ID_CLS.some(t => id.includes(t) || cl.includes(t))) return true;
     if (tag === 'iframe' && node.id !== 'player-iframe' && AD_SRCS.some(s => src.includes(s))) return true;
-    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent || '').includes(s))) return true;
+    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent||'').includes(s))) return true;
+
+    // Check COMPUTED style (catches elements styled via stylesheet, not just inline)
+    try {
+      const cs  = window.getComputedStyle(node);
+      const pos = cs.position;
+      const zi  = parseInt(cs.zIndex || 0, 10);
+      const w   = parseFloat(cs.width);
+      const h   = parseFloat(cs.height);
+      // Full-viewport fixed/absolute overlay with extremely high z-index
+      if ((pos === 'fixed' || pos === 'absolute') && zi > 8000 && !isOwnElement(node)) {
+        // Extra check: must be large enough to be a real overlay (> 30% viewport)
+        if (w > window.innerWidth * 0.3 || h > window.innerHeight * 0.3) return true;
+      }
+      // Also catch 1x1 tracking pixels injected as positioned elements
+      if ((pos === 'fixed' || pos === 'absolute') && zi > 100 && w <= 2 && h <= 2) return true;
+    } catch(_) {}
+
+    // Check inline style for high z-index (fast path)
+    try {
+      const ist = node.style;
+      const zi  = parseInt(ist.zIndex || 0, 10);
+      const pos = ist.position || '';
+      if ((pos === 'fixed' || pos === 'absolute') && zi > 9000 && !isOwnElement(node)) return true;
+    } catch(_) {}
+
     return false;
   }
+
+  // ════════════════════════════════════════════════════════
+  // 12. Click interceptor — swallow clicks on ad overlays
+  // ════════════════════════════════════════════════════════
+  document.addEventListener('click', function(e) {
+    let el = e.target;
+    while (el && el !== document.body) {
+      if (isAdOverlay(el)) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        el.remove();
+        return;
+      }
+      el = el.parentElement;
+    }
+  }, true);
+
+  // ════════════════════════════════════════════════════════
+  // 13. MutationObserver — nuke injected ad nodes in real-time
+  // ════════════════════════════════════════════════════════
+  const AD_SEL = [
+    '.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
+    '[class*="popunder"]','[class*="clickunder"]','[id*="popunder"]',
+    '[id*="interstitial"]','[class*="interstitial"]',
+    '[class*="ad-overlay"]','[id*="ad-overlay"]',
+    '[class*="adsterra"]','[id*="adsterra"]',
+    '[class*="propeller"]','[id*="propeller"]',
+    '[data-ad]','[data-ad-unit]','[data-adunit]',
+    'iframe[src*="popads"]','iframe[src*="popcash"]',
+    'iframe[src*="exoclick"]','iframe[src*="trafficjunky"]',
+    'iframe[src*="adsterra"]','iframe[src*="hilltopads"]',
+  ];
 
   new MutationObserver(muts => {
     for (const m of muts) {
       for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
-        if (isAd(n)) { n.remove(); continue; }
-        try { n.querySelectorAll(AD_SEL.join(',')).forEach(e => { if (!OWN.has(e.id)) e.remove(); }); } catch(_) {}
-      }
-      if (m.type === 'attributes') {
-        const t = m.target;
-        if (isAd(t) && t.id !== 'player-iframe') {
-          // Neutralise rather than remove in case it's part of the player container
-          t.style.cssText = 'display:none!important;pointer-events:none!important;opacity:0!important';
+        if (isAdOverlay(n)) { n.remove(); continue; }
+        for (const s of AD_SEL) {
+          try { n.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch(_) {}
         }
+      }
+      // Attribute mutation — something changed a z-index/position to become an overlay
+      if (m.type === 'attributes' && m.target && isAdOverlay(m.target) && !isOwnElement(m.target)) {
+        m.target.style.cssText = 'display:none!important;pointer-events:none!important;visibility:hidden!important;opacity:0!important';
+        // Schedule full removal
+        setTimeout(() => { try { m.target.remove(); } catch(_) {} }, 0);
       }
     }
   }).observe(document.documentElement, {
     childList: true, subtree: true, attributes: true,
-    attributeFilter: ['style','class','id','src','href']
+    attributeFilter: ['style','class','id','src','href','data-ad'],
   });
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 9 — PERIODIC SWEEP
-  ══════════════════════════════════════════════════════════════ */
+  // ════════════════════════════════════════════════════════
+  // 14. Periodic sweep — catch anything that slipped through,
+  //     using computed style for reliable z-index detection
+  // ════════════════════════════════════════════════════════
   function sweep() {
-    try { document.querySelectorAll(AD_SEL.join(',')).forEach(e => { if (!OWN.has(e.id)) e.remove(); }); } catch(_) {}
-    // Kill any rogue fixed overlays not inside our own modals
+    // Remove selector-matched ad elements
+    for (const s of AD_SEL) {
+      try { document.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch(_) {}
+    }
+    // Sweep all elements for rogue overlays using computed style
     try {
-      document.querySelectorAll('body > *:not(#app-content):not(#pw-gate):not(script):not(style):not(link):not(.mobile-nav)').forEach(el => {
-        if (isAd(el)) el.remove();
+      document.querySelectorAll('div,span,section,aside,article,ins,iframe').forEach(el => {
+        if (isOwnElement(el)) return;
+        if (isAdOverlay(el)) { el.remove(); return; }
+        // Computed-style sweep for positioned elements with very high z-index
+        try {
+          const cs = window.getComputedStyle(el);
+          const zi = parseInt(cs.zIndex || 0, 10);
+          const pos = cs.position;
+          if ((pos === 'fixed' || pos === 'absolute') && zi > 8000 && !isOwnElement(el)) {
+            const w = parseFloat(cs.width);
+            const h = parseFloat(cs.height);
+            if (w > window.innerWidth * 0.25 || h > window.innerHeight * 0.25) {
+              el.remove();
+            }
+          }
+        } catch(_) {}
       });
     } catch(_) {}
   }
-  [200, 500, 1000, 2000, 4000, 8000].forEach(t => setTimeout(sweep, t));
-  setInterval(sweep, 5000);
 
-  /* ══════════════════════════════════════════════════════════════
-     LAYER 10 — EXPOSE HELPERS FOR player open/close hooks
-  ══════════════════════════════════════════════════════════════ */
-  window._rwShield = { attach: attachShield, lift: liftShield };
+  // Sweep aggressively at the start (ad networks inject shortly after page load)
+  [100, 300, 600, 1000, 1800, 3000, 5000, 8000].forEach(t => setTimeout(sweep, t));
+  // Then periodically forever
+  setInterval(sweep, 7000);
+
+  // ════════════════════════════════════════════════════════
+  // 15. Shadow DOM defense — some ad networks inject into shadow roots
+  // ════════════════════════════════════════════════════════
+  const _attachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function(init) {
+    const root = _attachShadow.call(this, init);
+    // Observe the shadow root for ad injection too
+    new MutationObserver(muts => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          const src = (n.src || n.href || '').toLowerCase();
+          if (AD_SRCS.some(s => src.includes(s))) { n.remove(); continue; }
+          try { n.querySelectorAll('iframe,script').forEach(el => {
+            const s2 = (el.src || el.href || '').toLowerCase();
+            if (AD_SRCS.some(s => s2.includes(s))) el.remove();
+          }); } catch(_) {}
+        }
+      }
+    }).observe(root, { childList: true, subtree: true });
+    return root;
+  };
 
 })();
 
@@ -2356,8 +2447,6 @@ function switchSource(src) {
 function openPlayer() {
   document.getElementById('player-modal').classList.add('active');
   document.body.style.overflow = 'hidden';
-  // Attach the click-intercept shield over the iframe
-  requestAnimationFrame(() => { if (window._rwShield) window._rwShield.attach(); });
 }
 
 function closePlayer() {
@@ -2900,7 +2989,7 @@ else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch
         iframe.contentDocument.write(html);
         iframe.contentDocument.close();
       } catch(_) {
-        // Cross-origin: just set src directly as fallback
+        // Cross-origin fallback — just set src directly
         iframe.src = url;
       }
       iframe.onload = null;
