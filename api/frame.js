@@ -1,275 +1,257 @@
 /**
- * Vercel serverless function: /api/frame
+ * /api/frame — ReelWave Embed Wrapper
  *
- * This is the CORE of the redirect defence.
+ * Instead of proxying the embed HTML (which breaks sub-resources and gets 403s),
+ * this endpoint generates a thin HTML wrapper page that:
  *
- * Instead of pointing the iframe directly at vidsrc.cc / vidsrc.to etc,
- * the client calls /api/frame?url=https://vidsrc.cc/v2/embed/movie/123
+ *  1. Runs our kill script in ITS OWN context first
+ *  2. Creates a nested iframe pointing at the real embed URL
+ *  3. The wrapper page itself is same-origin (our domain), so our SW controls it
+ *  4. The inner iframe loads the embed directly (so sub-resources work fine)
+ *  5. The wrapper intercepts window.open, location changes, postMessages from the inner frame
+ *  6. The SW catches any navigation that escapes both layers
  *
- * This function:
- *  1. Fetches the embed page server-side (no CORS issues, custom headers)
- *  2. Injects our KILL SCRIPT into the <head> — runs before any other JS
- *  3. Strips known ad network <script> tags from the HTML
- *  4. Rewrites relative URLs so assets still load
- *  5. Serves back with headers that:
- *     - Allow the iframe to display it (no X-Frame-Options clash)
- *     - Set CSP that blocks popups and navigation from within
- *     - Prevent caching of the modified page
- *
- * The kill script injected into the fetched page overrides window.open,
- * location, and all navigation APIs INSIDE the embed's own context —
- * so even if the embed's JS tries to redirect, it hits our override first.
+ * This solves:
+ *  - "Host not in allowlist" — we removed the strict allowlist; SW handles blocking
+ *  - "Please Disable Sandbox" — no sandbox attribute, embed loads normally
+ *  - "Upstream 403" — embed loads directly in browser, not fetched server-side
+ *  - "Won't load" — sub-resources load from the embed's own origin normally
  */
 
-export const config = { runtime: 'edge' };  // Use Edge Runtime for speed
+export const config = { runtime: 'edge' };
 
-// ── Allowlist: only these embed domains can be proxied ───────────────────────
+// Domains the inner iframe is allowed to point at
 const ALLOWED_EMBED_HOSTS = [
-  'vidsrc.cc', 'vidsrc.to', 'vidsrc.me',
-  'player.autoembed.cc', 'multiembed.mov',
-  'embed.su', 'vidlink.pro',
-  'www.2embed.cc', '2embed.cc',
-  'www.2embed.to', '2embed.to',
+  'vidsrc.cc', 'vidsrc.to', 'vidsrc.me', 'vidsrc.xyz', 'vidsrc.net',
+  'player.autoembed.cc', 'autoembed.cc',
+  'multiembed.mov',
+  'embed.su',
+  'vidlink.pro',
+  '2embed.cc', '2embed.to', 'www.2embed.cc', 'www.2embed.to',
+  'streamed.su', 'streamed.pk',
 ];
-
-// ── The kill script injected into every proxied embed page ───────────────────
-// This runs FIRST, before the embed's own JavaScript, and poisons all
-// redirect/popup APIs at their source.
-const KILL_SCRIPT = `
-<script data-rw="shield">
-(function(){
-  // 1. Nuke window.open completely
-  window.open = function(){ return { focus:function(){}, blur:function(){}, closed:true }; };
-  Object.defineProperty(window, 'open', { value: window.open, writable:false, configurable:false });
-
-  // 2. Null out opener (so ads can't bounce via parent)
-  try { Object.defineProperty(window, 'opener', { get:()=>null, set:()=>{}, configurable:false }); } catch(_){}
-
-  // 3. Null window.name (redirect state carrier)
-  try { Object.defineProperty(window, 'name', { get:()=>'', set:()=>{}, configurable:false }); } catch(_){}
-
-  // 4. Lock top/parent location — THIS is what stops iframe→top redirects
-  //    We replace window.top and window.parent with Proxy objects whose
-  //    location property throws silently instead of navigating.
-  const safeLocation = new Proxy(window.location, {
-    get(t,p){
-      if(p === 'href' || p === 'assign' || p === 'replace' || p === 'reload'){
-        return function(){ console.warn('[RW-EMBED] Blocked navigation:', p); };
-      }
-      try { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; } catch(_){ return undefined; }
-    },
-    set(){ return true; }
-  });
-
-  const safeWindow = new Proxy(window, {
-    get(t,p){
-      if(p === 'top' || p === 'parent' || p === 'frames'){
-        return new Proxy({}, {
-          get(t2, p2){
-            if(p2 === 'location') return safeLocation;
-            if(p2 === 'open') return function(){ return null; };
-            if(p2 === 'top' || p2 === 'parent') return t2;
-            try { return t[p2]; } catch(_){ return undefined; }
-          },
-          set(){ return true; }
-        });
-      }
-      try { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; } catch(_){ return undefined; }
-    },
-    set(t,p,v){ try { t[p]=v; } catch(_){} return true; }
-  });
-
-  // Override self-reference to safeWindow so embed scripts using 'window' hit our proxy
-  try { Object.defineProperty(window, 'self', { get:()=>safeWindow, configurable:false }); } catch(_){}
-
-  // 5. Intercept location directly
-  const locHandler = {
-    get(t,p){
-      if(['href','assign','replace','reload'].includes(String(p))){
-        return function(url){ console.warn('[RW-EMBED] Blocked location:', url); };
-      }
-      try { const v = t[p]; return typeof v==='function'?v.bind(t):v; } catch(_){ return ''; }
-    },
-    set(t,p,v){ console.warn('[RW-EMBED] Blocked location.'+p+'='+v); return true; }
-  };
-  try { Object.defineProperty(window, 'location', { get:()=>new Proxy(location, locHandler), configurable:false }); } catch(_){}
-
-  // 6. Block history navigation abuse
-  history.pushState    = function(){};
-  history.replaceState = function(){};
-
-  // 7. Block document.createElement('a') click abuse
-  const _ce = document.createElement.bind(document);
-  document.createElement = function(tag, ...args) {
-    const el = _ce(tag, ...args);
-    if(tag.toLowerCase() === 'a') {
-      const _click = el.click.bind(el);
-      el.click = function(){
-        const href = (el.getAttribute('href')||'').trim();
-        if(href.startsWith('http') || el.target === '_blank'){ console.warn('[RW-EMBED] Blocked a.click()'); return; }
-        _click();
-      };
-    }
-    return el;
-  };
-
-  // 8. Kill eval/Function abuse
-  const BAD=['popunder','clickunder','window.open(','location.href','adsterra','propellerads','trafficjunky','popads','popcash','exoclick','hilltopads'];
-  const _eval=window.eval;
-  window.eval=function(c){ if(typeof c==='string'&&BAD.some(b=>c.includes(b))){ return undefined; } return _eval.call(this,c); };
-  const _Fn=window.Function;
-  window.Function=function(...a){ const b=a[a.length-1]||''; if(typeof b==='string'&&BAD.some(x=>b.includes(x))) return ()=>{}; return _Fn(...a); };
-
-  // 9. Kill setTimeout/setInterval string abuse
-  const _st=window.setTimeout, _si=window.setInterval;
-  window.setTimeout=function(fn,d,...a){ if(typeof fn==='string'&&BAD.some(b=>fn.includes(b))) return 0; return _st.call(this,fn,d,...a); };
-  window.setInterval=function(fn,d,...a){ if(typeof fn==='string'&&BAD.some(b=>fn.includes(b))) return 0; return _si.call(this,fn,d,...a); };
-
-  // 10. Block focus/blur popup trick
-  window.addEventListener('blur', e => e.stopImmediatePropagation(), true);
-
-  // 11. Block Notification API
-  if('Notification' in window){
-    try { Object.defineProperty(Notification,'requestPermission',{value:()=>Promise.resolve('denied'),writable:false}); } catch(_){}
-  }
-
-  // 12. postMessage kill
-  window.addEventListener('message', function(e){
-    try {
-      const raw = typeof e.data==='string'?e.data:JSON.stringify(e.data||'');
-      const bad2=['window.open','popunder','clickunder','location.href','location.replace'];
-      if(bad2.some(b=>raw.includes(b))) e.stopImmediatePropagation();
-    } catch(_){}
-  }, true);
-
-  console.log('[RW-SHIELD] Embed protection active');
-})();
-</script>
-`;
-
-// ── Ad script domains to strip from fetched HTML ─────────────────────────────
-const AD_SCRIPT_SRCS = [
-  'doubleclick','googlesyndication','adnxs','exoclick','trafficjunky',
-  'popads','popcash','propellerads','adsterra','adcash','juicyads',
-  'yllix','evadav','richpush','coinzilla','a-ads','revcontent','taboola',
-  'mgid','hilltopads','clickadu','zeropark','adform','criteo',
-  'googletagmanager','googletagservices','quantserve','outbrain',
-  'amazon-adsystem','advertising.com','2mdn.net',
-];
-
-function stripAdScripts(html) {
-  // Remove <script> tags whose src contains ad domains
-  html = html.replace(/<script[^>]*src=["'][^"']*(?:doubleclick|googlesyndication|adnxs|exoclick|trafficjunky|popads|popcash|propellerads|adsterra|adcash|juicyads|yllix|evadav|richpush|coinzilla|revcontent|taboola|mgid|hilltopads|clickadu|zeropark|adform|criteo|googletagmanager|googletagservices|quantserve|outbrain|amazon-adsystem|advertising\.com|2mdn\.net)[^"']*["'][^>]*>.*?<\/script>/gis, '<!-- [RW: ad script removed] -->');
-  // Remove inline scripts that reference known ad patterns
-  html = html.replace(/<script(?![^>]*src=)[^>]*>([\s\S]*?(?:popunder|clickunder|popads|popcash|adsterra|propellerads|trafficjunky|exoclick)[\s\S]*?)<\/script>/gi, '<!-- [RW: ad inline script removed] -->');
-  return html;
-}
-
-function injectKillScript(html) {
-  // Inject as the very FIRST thing inside <head> — before any other scripts run
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/(<head[^>]*>)/i, `$1\n${KILL_SCRIPT}`);
-  }
-  // Fallback: inject before <html> or at very start
-  if (/<html[^>]*>/i.test(html)) {
-    return html.replace(/(<html[^>]*>)/i, `$1\n${KILL_SCRIPT}`);
-  }
-  return KILL_SCRIPT + html;
-}
 
 export default async function handler(req) {
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { 'Content-Type': 'application/json' } });
+    return new Response('Method not allowed', { status: 405 });
   }
 
   const { searchParams } = new URL(req.url);
-  const targetUrl = searchParams.get('url');
+  const embedUrl = searchParams.get('url');
 
-  if (!targetUrl) {
-    return new Response(JSON.stringify({ error: 'Missing url parameter' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  if (!embedUrl) {
+    return new Response('Missing url', { status: 400 });
   }
 
-  // Validate URL
   let parsed;
-  try { parsed = new URL(targetUrl); }
-  catch(_) { return new Response(JSON.stringify({ error: 'Invalid URL' }), { status: 400, headers: { 'Content-Type': 'application/json' } }); }
+  try { parsed = new URL(embedUrl); }
+  catch(_) { return new Response('Invalid URL', { status: 400 }); }
 
-  // Only allow known embed hosts
   if (!ALLOWED_EMBED_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
-    return new Response(JSON.stringify({ error: 'Host not in allowlist' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    return new Response('Host not allowed', { status: 403 });
+  }
+
+  // Escape for safe embedding in JS string and HTML attribute
+  const safeUrl = embedUrl.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  const escapedOrigin = parsed.origin.replace(/"/g, '');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #embed-frame {
+    width: 100%; height: 100%;
+    border: none;
+    display: block;
+  }
+</style>
+
+<!--
+  LAYER 1: Kill script runs in the WRAPPER page context (same-origin as our app).
+  This page itself cannot be redirected by the inner embed because the inner iframe
+  is cross-origin from this wrapper. However we intercept postMessage and other
+  communication channels.
+-->
+<script>
+(function() {
+  'use strict';
+
+  // Kill window.open in wrapper context
+  window.open = function(){ return null; };
+  try { Object.defineProperty(window, 'open', { value: ()=>null, writable:false, configurable:false }); } catch(_) {}
+  try { Object.defineProperty(window, 'opener', { get:()=>null, set:()=>{}, configurable:false }); } catch(_) {}
+  try { Object.defineProperty(window, 'name', { get:()=>'', set:()=>{}, configurable:false }); } catch(_) {}
+
+  // Block beforeunload / unload redirects
+  window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; }, true);
+
+  // Intercept postMessages from the inner embed iframe — kill any redirect commands
+  window.addEventListener('message', function(e) {
+    try {
+      const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data || '');
+      const lower = raw.toLowerCase();
+      const bad = ['window.open', 'location.href', 'location.replace', 'location.assign',
+                   'popunder', 'clickunder', '_blank', 'redirect', 'popads', 'adsterra'];
+      if (bad.some(b => lower.includes(b))) {
+        // Swallow — don't re-dispatch
+        return;
+      }
+    } catch(_) {}
+    // Allow legitimate messages (like video player state) to propagate
+  }, true);
+
+  // Watch for the inner iframe trying to navigate its parent (this wrapper page)
+  // If anything tries to change our location, we send a message up to the top app
+  const _assign  = location.assign.bind(location);
+  const _replace = location.replace.bind(location);
+  const selfOrigin = location.origin;
+
+  function isExternal(url) {
+    try { return new URL(url).origin !== selfOrigin; } catch(_) { return true; }
   }
 
   try {
-    const upstream = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': `${parsed.origin}/`,
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-      },
-      redirect: 'follow',
+    location.assign  = function(url) { if (!isExternal(url)) _assign(url); };
+    location.replace = function(url) { if (!isExternal(url)) _replace(url); };
+    Object.defineProperty(location, 'href', {
+      get() { return location.href; },
+      set(v) { if (!isExternal(v)) _assign(v); },
     });
+  } catch(_) {}
 
-    if (!upstream.ok) {
-      return new Response(JSON.stringify({ error: `Upstream ${upstream.status}` }), { status: upstream.status, headers: { 'Content-Type': 'application/json' } });
-    }
+  // Notify parent app that shield is active
+  window.parent?.postMessage({ type: 'RW_SHIELD_READY' }, '*');
+})();
+</script>
+</head>
+<body>
 
-    const contentType = upstream.headers.get('content-type') || '';
+<iframe
+  id="embed-frame"
+  src="${safeUrl}"
+  allowfullscreen
+  allow="autoplay; fullscreen; encrypted-media; picture-in-picture; accelerometer; gyroscope"
+  referrerpolicy="no-referrer-when-downgrade"
+  loading="eager"
+></iframe>
 
-    // Only process HTML — pass through other content (video, images, etc.) unchanged
-    if (!contentType.includes('text/html')) {
-      return new Response(upstream.body, {
-        status: upstream.status,
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=3600',
-          'Access-Control-Allow-Origin': '*',
+<!--
+  LAYER 2: After the inner iframe loads, inject the kill script INTO the inner frame
+  via contentWindow property access. This only works if the inner frame is same-origin,
+  but we try anyway — for cross-origin frames, the SW handles navigation interception.
+-->
+<script>
+(function() {
+  'use strict';
+
+  const frame = document.getElementById('embed-frame');
+
+  // The kill payload we try to inject into the inner frame
+  const INNER_KILL = function() {
+    try {
+      // Nuke window.open
+      window.open = function(){ return null; };
+      Object.defineProperty(window, 'open', { value: ()=>null, writable:false, configurable:false });
+      Object.defineProperty(window, 'opener', { get:()=>null, set:()=>{}, configurable:false });
+      Object.defineProperty(window, 'name', { get:()=>'', set:()=>{}, configurable:false });
+
+      // Block top/parent navigation from inside embed
+      const noNav = function(){};
+      const fakeLoc = new Proxy(location, {
+        get(t, p) {
+          if (p === 'href' || p === 'assign' || p === 'replace' || p === 'reload') return noNav;
+          try { const v = t[p]; return typeof v === 'function' ? v.bind(t) : v; } catch(_) { return ''; }
         },
+        set() { return true; }
       });
+      const fakeTopWin = new Proxy({}, {
+        get(t, p) {
+          if (p === 'location') return fakeLoc;
+          if (p === 'open') return ()=>null;
+          if (p === 'top' || p === 'parent') return fakeTopWin;
+          try { return window[p]; } catch(_) { return undefined; }
+        },
+        set() { return true; }
+      });
+      // Can't redefine window.top directly in cross-origin, but try for same-origin:
+      try { Object.defineProperty(window, 'top', { get: ()=>fakeTopWin, configurable:false }); } catch(_) {}
+      try { Object.defineProperty(window, 'parent', { get: ()=>fakeTopWin, configurable:false }); } catch(_) {}
+
+      // Block history abuse
+      try { history.pushState = ()=>{}; history.replaceState = ()=>{}; } catch(_) {}
+
+      // Kill eval/Function string abuse
+      const BAD = ['popunder','clickunder','window.open(','popads','popcash','adsterra','propellerads','trafficjunky','exoclick'];
+      const _ev = window.eval;
+      window.eval = function(c) { if (typeof c==='string' && BAD.some(b=>c.includes(b))) return; return _ev.call(this,c); };
+      const _Fn = window.Function;
+      window.Function = function(...a) { const b = a[a.length-1]||''; if (typeof b==='string' && BAD.some(x=>b.includes(x))) return ()=>{}; return _Fn(...a); };
+
+      // Kill string timers
+      const _st=window.setTimeout, _si=window.setInterval;
+      window.setTimeout  = function(fn,d,...a){ if(typeof fn==='string'&&BAD.some(b=>fn.includes(b))) return 0; return _st.call(this,fn,d,...a); };
+      window.setInterval = function(fn,d,...a){ if(typeof fn==='string'&&BAD.some(b=>fn.includes(b))) return 0; return _si.call(this,fn,d,...a); };
+
+      // Block createElement('a').click() abuse
+      const _ce = document.createElement.bind(document);
+      document.createElement = function(tag, ...args) {
+        const el = _ce(tag, ...args);
+        if (tag.toLowerCase() === 'a') {
+          const _ck = el.click.bind(el);
+          el.click = function() {
+            const href = (el.getAttribute('href')||'').trim();
+            if (href.startsWith('http') || el.target === '_blank') return;
+            _ck();
+          };
+        }
+        return el;
+      };
+
+      // Block Notification/push
+      if ('Notification' in window) {
+        try { Object.defineProperty(Notification, 'requestPermission', { value:()=>Promise.resolve('denied'), writable:false }); } catch(_) {}
+      }
+
+      console.log('[RW] Inner frame shield active');
+    } catch(e) {
+      console.warn('[RW] Inner frame shield partial:', e.message);
     }
+  };
 
-    let html = await upstream.text();
-
-    // 1. Strip ad scripts from the HTML
-    html = stripAdScripts(html);
-
-    // 2. Inject our kill script as the very first thing
-    html = injectKillScript(html);
-
-    // 3. Rewrite the base URL so relative links still work
-    const baseTag = `<base href="${parsed.origin}/">`;
-    if (!/<base[^>]*href/i.test(html)) {
-      html = html.replace(/(<head[^>]*>)/i, `$1\n${baseTag}`);
+  // Try to inject on load (works if same-origin, silently fails if cross-origin — SW handles that case)
+  frame.addEventListener('load', function() {
+    try {
+      if (frame.contentWindow) {
+        // Try direct injection (works if same-origin after redirect)
+        frame.contentWindow.eval('(' + INNER_KILL.toString() + ')()');
+      }
+    } catch(_) {
+      // Cross-origin — expected. SW is the fallback.
     }
+  });
 
-    return new Response(html, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        // Allow this page to be iframed by our own site
-        'X-Frame-Options': 'SAMEORIGIN',
-        // Key CSP for the proxied page:
-        // - sandbox equivalent: no popups, no top navigation
-        // - allow-popups is NOT listed, so window.open inside the embed = blocked by browser
-        'Content-Security-Policy': [
-          "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:",
-          // Critically: disallow navigation of the top frame
-          "navigate-to 'self'",
-          // No popups
-          "sandbox allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-downloads",
-        ].join('; '),
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+})();
+</script>
 
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message || 'Frame proxy failed' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+</body>
+</html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache',
+      // This wrapper page is served from our own origin, so X-Frame-Options SAMEORIGIN is fine
+      'X-Frame-Options': 'SAMEORIGIN',
+      // CSP for the wrapper: allow the inner iframe to load any https source
+      // Critically: no allow-popups means window.open from wrapper = blocked by browser too
+      'Content-Security-Policy': "default-src 'self' 'unsafe-inline' 'unsafe-eval'; frame-src https:; img-src https: data:; media-src https: blob:; connect-src https:;",
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 }

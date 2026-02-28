@@ -1643,8 +1643,8 @@ main { padding-top: 64px; min-height: 100vh; }
     <div class="player-wrap">
       <iframe id="player-iframe"
         allowfullscreen
-        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-        referrerpolicy="no-referrer"
+        allow="autoplay; fullscreen; encrypted-media; picture-in-picture; accelerometer; gyroscope"
+        referrerpolicy="no-referrer-when-downgrade"
         title="Video player"></iframe>
     </div>
     <div id="episode-selector-wrap">
@@ -3209,6 +3209,22 @@ function wireEvents() {
 }
 
 /* ═══════════════════════════════════════
+   IFRAME SHIELD MESSAGE HANDLER
+   Listens for messages from /api/frame wrapper pages
+═══════════════════════════════════════ */
+window.addEventListener('message', function(e) {
+  if (!e.data || typeof e.data !== 'object') return;
+  // Log blocked redirects for debugging
+  if (e.data.type === 'RW_BLOCKED') {
+    console.warn('[RW] Ad redirect blocked by wrapper:', e.data.hostname);
+  }
+  // Shield active confirmation
+  if (e.data.type === 'RW_SHIELD_READY') {
+    console.log('[RW] Wrapper shield active');
+  }
+});
+
+/* ═══════════════════════════════════════
    INIT
 ═══════════════════════════════════════ */
 function initApp() {
@@ -3218,6 +3234,18 @@ function initApp() {
   fetchMovies('popular');
   loadGenres();
   loadScreamRow();
+
+  // Verify SW is active and ping it
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => {
+      reg.active?.postMessage('PING');
+    });
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data?.type === 'PONG') {
+        console.log('[RW] SW Shield active, version:', e.data.version);
+      }
+    });
+  }
 }
 </script>
 
