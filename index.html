@@ -18,7 +18,7 @@
         var sw = reg.installing; if (!sw) return;
         sw.addEventListener('statechange', function() { if (sw.state === 'installed') activateWaiting(sw); });
       });
-      console.log('[RW] SW v6 registered');
+      console.log('[RW] SW v7 registered');
     })
     .catch(function(e) { console.warn('[RW] SW failed:', e.message); });
   var reloading = false;
@@ -431,20 +431,23 @@ main{padding-top:64px;min-height:100vh}
     <div class="settings-body">
       <div class="shield-status-row">
         <span class="sdot"></span>
-        <span>Ad Shield v6 active — <span id="shield-block-count">0</span> blocks this session</span>
+        <span>Ad Shield v7 active — <span id="shield-block-count">0</span> blocks this session</span>
       </div>
       <div>
         <div class="settings-row-label">Default Stream Source</div>
         <div class="settings-btn-row" id="settings-src-btns">
           <button class="settings-src-btn active" data-src="vidsrc">VidSrc</button>
           <button class="settings-src-btn" data-src="vidsrc2">VidSrc 2</button>
-          <button class="settings-src-btn" data-src="vidsrccc">VidSrc 3</button>
+          <button class="settings-src-btn" data-src="vidsrcme">VidSrc 3</button>
+          <button class="settings-src-btn" data-src="vidsrcxyz">VidSrc 4</button>
           <button class="settings-src-btn" data-src="autoembed">AutoEmbed</button>
           <button class="settings-src-btn" data-src="superembed">SuperEmbed</button>
-          <button class="settings-src-btn" data-src="vsembed">VSEmbed</button>
+          <button class="settings-src-btn" data-src="vsembed">EmbedSu</button>
           <button class="settings-src-btn" data-src="vidlink">VidLink</button>
-          <button class="settings-src-btn" data-src="frembed">Frembed</button>
+          <button class="settings-src-btn" data-src="2embed">2Embed</button>
           <button class="settings-src-btn" data-src="rive">Rive</button>
+          <button class="settings-src-btn" data-src="frembed">Frembed</button>
+          <button class="settings-src-btn" data-src="smashy">Smashy</button>
         </div>
       </div>
       <div>
@@ -1381,15 +1384,19 @@ function setEpisode() {
 function frameUrl(raw) { return `/api/frame?url=${encodeURIComponent(raw)}`; }
 
 const SOURCES = [
-  { key: 'vidsrc',    label: 'VidSrc',     movie: id => `https://vidsrc.cc/v2/embed/movie/${id}`,       tv: (id,s,e) => `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}` },
-  { key: 'vidsrc2',   label: 'VidSrc 2',   movie: id => `https://vidsrc.to/embed/movie/${id}`,           tv: (id,s,e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}` },
-  { key: 'vidsrccc',  label: 'VidSrc 3',   movie: id => `https://vidsrc.me/embed/movie?tmdb=${id}`,      tv: (id,s,e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
-  { key: 'autoembed', label: 'AutoEmbed',  movie: id => `https://player.autoembed.cc/embed/movie/${id}`,tv: (id,s,e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}` },
+  /* VidSrc — v3 is the current working path as of 2025 */
+  { key: 'vidsrc',    label: 'VidSrc',     movie: id => `https://vidsrc.cc/v3/embed/movie/${id}`,       tv: (id,s,e) => `https://vidsrc.cc/v3/embed/tv/${id}/${s}/${e}` },
+  { key: 'vidsrc2',   label: 'VidSrc 2',   movie: id => `https://vidsrc.to/embed/movie/${id}`,          tv: (id,s,e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}` },
+  { key: 'vidsrcme',  label: 'VidSrc 3',   movie: id => `https://vidsrc.me/embed/movie?tmdb=${id}`,     tv: (id,s,e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
+  { key: 'vidsrcxyz', label: 'VidSrc 4',   movie: id => `https://vidsrc.xyz/embed/movie?tmdb=${id}`,   tv: (id,s,e) => `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
+  { key: 'autoembed', label: 'AutoEmbed',  movie: id => `https://player.autoembed.cc/embed/movie/${id}`, tv: (id,s,e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}` },
   { key: 'superembed',label: 'SuperEmbed', movie: id => `https://multiembed.mov/?video_id=${id}&tmdb=1`, tv: (id,s,e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}` },
-  { key: 'vsembed',   label: 'VSEmbed',    movie: id => `https://embed.su/embed/movie/${id}`,            tv: (id,s,e) => `https://embed.su/embed/tv/${id}/${s}/${e}` },
-  { key: 'vidlink',   label: 'VidLink',    movie: id => `https://vidlink.pro/movie/${id}`,               tv: (id,s,e) => `https://vidlink.pro/tv/${id}/${s}/${e}` },
-  { key: 'frembed',   label: 'Frembed',    movie: id => `https://frembed.pro/api/film.php?id=${id}`,     tv: (id,s,e) => `https://frembed.pro/api/serie.php?id=${id}&sa=${s}&epi=${e}` },
-  { key: 'rive',      label: 'Rive',       movie: id => `https://rive.su/embed/movie?tmdb=${id}`,        tv: (id,s,e) => `https://rive.su/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
+  { key: 'vsembed',   label: 'EmbedSu',    movie: id => `https://embed.su/embed/movie/${id}`,            tv: (id,s,e) => `https://embed.su/embed/tv/${id}/${s}/${e}` },
+  { key: 'vidlink',   label: 'VidLink',    movie: id => `https://vidlink.pro/movie/${id}?autoplay=true&primaryColor=e8c96d`, tv: (id,s,e) => `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true&primaryColor=e8c96d` },
+  { key: '2embed',    label: '2Embed',     movie: id => `https://www.2embed.cc/embed/${id}`,              tv: (id,s,e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}` },
+  { key: 'rive',      label: 'Rive',       movie: id => `https://rive.su/embed/movie?tmdb=${id}`,         tv: (id,s,e) => `https://rive.su/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
+  { key: 'frembed',   label: 'Frembed',    movie: id => `https://frembed.pro/api/film.php?id=${id}`,      tv: (id,s,e) => `https://frembed.pro/api/serie.php?id=${id}&sa=${s}&epi=${e}` },
+  { key: 'smashy',    label: 'Smashy',     movie: id => `https://player.smashy.stream/movie/${id}`,       tv: (id,s,e) => `https://player.smashy.stream/tv/${id}?s=${s}&e=${e}` },
 ];
 
 function setPlayerSrc() {
@@ -1397,7 +1404,39 @@ function setPlayerSrc() {
   if (!m || m.type === 'football') return;
   const src = SOURCES.find(s => s.key === state.currentSource) || SOURCES[0];
   const raw = m.type === 'movie' ? src.movie(m.id) : src.tv(m.id, m.season || 1, m.episode || 1);
-  document.getElementById('player-iframe').src = frameUrl(raw);
+  const iframe = document.getElementById('player-iframe');
+  iframe.src = frameUrl(raw);
+
+  // Auto-fallback: if iframe fails to load (X-Frame-Options / refused to connect),
+  // automatically try the next available source after a timeout
+  clearTimeout(iframe._rwFallbackTimer);
+  iframe._rwAttemptSrc = state.currentSource;
+  iframe._rwFallbackTimer = setTimeout(() => {
+    // Check if we got a valid content load or still blank
+    // We can't know for certain with cross-origin, but if the source
+    // is the same one we started with, try next
+    if (iframe._rwAttemptSrc === state.currentSource) {
+      const srcIdx = SOURCES.findIndex(s => s.key === state.currentSource);
+      if (srcIdx < SOURCES.length - 1) {
+        const nextSrc = SOURCES[srcIdx + 1];
+        // Only auto-switch if we haven't been manually switched
+        if (iframe._rwAttemptSrc === state.currentSource) {
+          console.log('[RW] Source timeout, trying next:', nextSrc.key);
+          showToast(`Trying ${nextSrc.label}…`, '', 1800);
+          switchSource(nextSrc.key);
+        }
+      }
+    }
+  }, 12000); // 12s timeout before trying next source
+
+  // Clear fallback timer on any postMessage from the frame (means it loaded)
+  const handler = (e) => {
+    if (e.data && typeof e.data === 'object' && e.data.type === 'SHIELD_READY') {
+      clearTimeout(iframe._rwFallbackTimer);
+      window.removeEventListener('message', handler);
+    }
+  };
+  window.addEventListener('message', handler);
 }
 
 function resetSourceSwitcher() {
