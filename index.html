@@ -1369,7 +1369,23 @@ main { padding-top: 64px; min-height: 100vh; }
     border-radius: 14px 14px 0 0;
     max-height: 92vh;
     overflow-y: auto;
+    overflow-x: hidden;
     animation: slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  /* Fix: padding-bottom % trick breaks inside max-height flex containers on mobile.
+     Use aspect-ratio instead so the iframe always gets real height. */
+  .player-wrap {
+    position: relative;
+    width: 100%;
+    padding-bottom: 0;
+    aspect-ratio: 16 / 9;
+    height: auto;
+  }
+  .player-wrap iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
   }
   .source-switcher { padding: 10px 14px; gap: 6px; }
   .episode-selector { padding: 10px 14px; }
@@ -1660,112 +1676,190 @@ main { padding-top: 64px; min-height: 100vh; }
 <script>
 'use strict';
 
-/* ─── AD BLOCKING (runs immediately) ─────────────────────────── */
+/* ─── POPUP & AD BLOCKER (runs immediately) ──────────────────── */
 (function adBlock() {
-  // 1. Block window.open popups from iframes
-  const _open = window.open;
-  window.open = function(url, name, features) {
-    if (!url || url === '' || url === 'about:blank') return _open.call(this, url, name, features);
-    return null;
-  };
 
-  // 2. Warn before unload only when player is active
-  window.addEventListener('beforeunload', e => {
-    const modal = document.getElementById('player-modal');
-    if (modal && modal.classList.contains('active')) { e.preventDefault(); e.returnValue = ''; }
-  });
+  // ── 1. NUCLEAR window.open — block everything, no exceptions ──
+  window.open = function() { return null; };
+  // Also kill opener references so iframes can't use parent.window.open
+  try { Object.defineProperty(window, 'opener', { get: () => null, set: () => {} }); } catch(_) {}
 
-  // 3. Block notification permission
+  // ── 2. Block ALL new-tab link clicks that originate outside our UI ──
+  document.addEventListener('click', function(e) {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href') || '';
+    if (a.target === '_blank' || href.startsWith('http') || href.startsWith('//')) {
+      if (!a.closest('#app-content') && !a.closest('#pw-gate')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+      }
+    }
+  }, true);
+
+  // ── 3. Intercept location changes — iframes try window.top.location ──
+  (function lockLocation() {
+    let _href = location.href;
+    const handler = {
+      get(t, p) {
+        if (p === 'href') return _href;
+        const v = t[p];
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+      set(t, p, v) {
+        if (p === 'href') { console.warn('[RW] Blocked location.href=', v); return true; }
+        t[p] = v; return true;
+      }
+    };
+    try {
+      // Prevent scripts from redirecting the whole page
+      window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; }, true);
+    } catch(_) {}
+  })();
+
+  // ── 4. Swallow ALL postMessages that contain redirect/popup instructions ──
+  window.addEventListener('message', function(e) {
+    try {
+      const raw = typeof e.data === 'string' ? e.data : JSON.stringify(e.data || '');
+      const bad = ['window.open','popunder','clickunder','location.href','location.replace',
+                   'location.assign','open(','_blank','redirect'];
+      if (bad.some(b => raw.includes(b))) {
+        e.stopImmediatePropagation();
+        return;
+      }
+    } catch(_) {}
+  }, true);
+
+  // ── 5. Block notification / push APIs used by ad networks ──
   if ('Notification' in window) {
     try {
-      Object.defineProperty(Notification, 'requestPermission', {
-        value: () => Promise.resolve('denied'), writable: true, configurable: true
-      });
-    } catch (_) {}
+      Object.defineProperty(Notification, 'requestPermission', { value: () => Promise.resolve('denied'), configurable: false });
+      Object.defineProperty(Notification, 'permission', { get: () => 'denied', configurable: false });
+    } catch(_) {}
+  }
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.ready.then(r => {
+      if (r?.pushManager) r.pushManager.subscribe = () => Promise.reject('blocked');
+    }).catch(()=>{});
   }
 
-  // 4. Block push subscriptions
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then(reg => { if (reg?.pushManager) reg.pushManager.subscribe = () => Promise.reject(new Error('blocked')); })
-      .catch(() => {});
-  }
-
-  // 5. Override document.write for ad injection attempts
-  const _dw = document.write.bind(document);
-  document.write = function(html) {
-    const blocked = ['adsense', 'doubleclick', 'popads', 'adsbygoogle', 'googletag'];
-    if (typeof html === 'string' && blocked.some(p => html.includes(p))) return;
-    _dw(html);
-  };
-
-  // 6. Block eval-based popunders
+  // ── 6. Block eval / Function constructor abuse ──
   const _eval = window.eval;
-  window.eval = function(code) {
-    const blocked = ['popunder', 'clickunder', 'popads', 'popcash', 'trafficjunky'];
-    if (typeof code === 'string' && blocked.some(p => code.includes(p))) return undefined;
-    return _eval.call(this, code);
+  const BAD_EVAL = ['popunder','clickunder','popads','popcash','window.open','adsterra','propellerads','trafficjunky'];
+  window.eval = function(c) {
+    if (typeof c === 'string' && BAD_EVAL.some(b => c.includes(b))) return undefined;
+    return _eval.call(this, c);
   };
 
-  // 7. Helper: safe className for SVG elements
+  // ── 7. Block document.write ad injection ──
+  const _dw = document.write.bind(document);
+  document.write = function(h) {
+    const bad = ['adsense','doubleclick','popads','adsbygoogle','googletag','exoclick'];
+    if (typeof h === 'string' && bad.some(b => h.includes(b))) return;
+    _dw(h);
+  };
+
+  // ── 8. Transparent click-jacking shield over the iframe ──
+  // Many popups work by placing an invisible element on top of the iframe.
+  // We watch for any fixed/absolute high-z-index element injected over the player
+  // and either remove it or pointer-events:none it.
   function safeClass(node) {
-    try {
-      const c = node.className;
-      if (!c) return '';
-      return (typeof c === 'string' ? c : (c.baseVal || '')).toLowerCase();
-    } catch (_) { return ''; }
+    try { const c = node.className; return (typeof c === 'string' ? c : (c.baseVal||'')).toLowerCase(); } catch(_) { return ''; }
   }
 
-  // 8. Ad node detector
   const OWN_IDS = new Set(['player-modal','player-iframe','pw-gate','mobile-nav',
     'settings-modal','app-content','hero-section','scream-row','movies-grid','tv-grid',
-    'matches-grid','franchise-view','source-switcher']);
+    'matches-grid','franchise-view','source-switcher','episode-selector-wrap',
+    'source-switcher','player-container','player-header','player-wrap','player-close']);
+
   const AD_TOKENS = ['adsense','advert','adwrap','ad-wrap','ad-banner','leaderboard',
     'interstitial','ad-overlay','adoverlay','sticky-ad','popunder','clickunder','admodal',
-    'gpt-ad','div-gpt','google_ads','carbonads','ez-ad'];
+    'gpt-ad','div-gpt','google_ads','carbonads','ez-ad','advertisement','preroll',
+    'overlay','modal-ad','ad_wrap','sponsor','promo-banner','popup','pop-up'];
+
   const AD_SRCS = ['doubleclick','googlesyndication','adnxs','adroll','rubiconproject',
     'openx.net','pubmatic','exoclick','trafficjunky','popads','popcash','propellerads',
-    'adsterra','adcash','juicyads','yllix','evadav','richpush','coinzilla','a-ads.com'];
-  const AD_SCRIPTS = ['adsbygoogle','googletag','popads.net','popcash.net','exoclick',
-    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot','minero.cc','webmr.ru'];
+    'adsterra','adcash','juicyads','yllix','evadav','richpush','coinzilla','a-ads.com',
+    'revcontent','taboola','mgid','hilltopads','clickadu','zeropark'];
 
-  function isAdNode(node) {
+  const AD_SCRIPTS = ['adsbygoogle','googletag','popads.net','popcash.net','exoclick',
+    'trafficjunky','propellerads','adsterra','coinhive','cryptoloot'];
+
+  function isAdOverlay(node) {
     if (!node || node.nodeType !== 1) return false;
-    const tag = (node.tagName || '').toLowerCase();
+    if (OWN_IDS.has(node.id)) return false;
+    const st = node.style || {};
+    const pos = st.position || '';
+    const zi  = parseInt(st.zIndex || 0, 10);
+    // Any fixed/absolute overlay injected with very high z-index that isn't ours
+    if ((pos === 'fixed' || pos === 'absolute') && zi > 9000 && !OWN_IDS.has(node.id)) return true;
     const id  = (node.id  || '').toLowerCase();
     const cls = safeClass(node);
-    const src = node.src || node.href || '';
-    if (OWN_IDS.has(node.id) || OWN_IDS.has(id)) return false;
-    const zi = parseInt(node.style?.zIndex || 0, 10);
-    const pos = node.style?.position;
-    if ((pos === 'fixed' || pos === 'absolute') && zi > 9999) return true;
     if (AD_TOKENS.some(t => id.includes(t) || cls.includes(t))) return true;
+    const tag = (node.tagName||'').toLowerCase();
+    const src = (node.src||node.href||'').toLowerCase();
     if (tag === 'iframe' && node.id !== 'player-iframe' && AD_SRCS.some(s => src.includes(s))) return true;
-    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s) || (node.textContent || '').includes(s))) return true;
+    if (tag === 'script' && AD_SCRIPTS.some(s => src.includes(s)||(node.textContent||'').includes(s))) return true;
     return false;
   }
 
-  const AD_SELECTORS = ['.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
-    '[class*="popunder"]','[class*="clickunder"]'];
+  // ── 9. Click-intercept: if the click target is an ad overlay, swallow it ──
+  document.addEventListener('click', function(e) {
+    let el = e.target;
+    while (el && el !== document.body) {
+      if (isAdOverlay(el)) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        el.remove();
+        return;
+      }
+      el = el.parentElement;
+    }
+  }, true);
+
+  // ── 10. MutationObserver — remove injected ad nodes as fast as they appear ──
+  const AD_SEL = ['.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
+    '[class*="popunder"]','[class*="clickunder"]','[id*="popunder"]','[id*="interstitial"]',
+    '[class*="interstitial"]','[class*="ad-overlay"]','[id*="ad-overlay"]'];
 
   new MutationObserver(muts => {
-    muts.forEach(m => {
-      m.addedNodes.forEach(n => {
-        if (isAdNode(n)) { n.remove(); return; }
-        if (n.nodeType === 1) AD_SELECTORS.forEach(s => { try { n.querySelectorAll(s).forEach(e => e.remove()); } catch (_) {} });
-      });
-      if (m.type === 'attributes' && isAdNode(m.target)) m.target.remove();
-    });
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class'] });
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (isAdOverlay(n)) { n.remove(); continue; }
+        for (const s of AD_SEL) { try { n.querySelectorAll(s).forEach(e => e.remove()); } catch(_){} }
+      }
+      if (m.type === 'attributes' && isAdOverlay(m.target)) {
+        // Don't remove — just neutralise pointer events so it can't intercept clicks
+        m.target.style.pointerEvents = 'none';
+        m.target.style.display = 'none';
+      }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class','id'] });
 
+  // ── 11. Periodic sweep for anything that slipped through ──
   function sweep() {
-    AD_SELECTORS.forEach(s => {
-      try { document.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch (_) {}
-    });
-    try { document.querySelectorAll('div,iframe,ins').forEach(e => { if (isAdNode(e)) e.remove(); }); } catch (_) {}
+    // Remove known ad selectors
+    for (const s of AD_SEL) {
+      try { document.querySelectorAll(s).forEach(e => { if (e.id !== 'player-iframe') e.remove(); }); } catch(_){}
+    }
+    // Neutralise any rogue fixed overlays we don't own
+    try {
+      document.querySelectorAll('div,span,section,aside').forEach(el => {
+        if (OWN_IDS.has(el.id)) return;
+        const st = el.style;
+        if (!st) return;
+        const zi = parseInt(st.zIndex||0, 10);
+        if ((st.position==='fixed'||st.position==='absolute') && zi>9000) {
+          // Check it isn't one of our own modals by checking ancestry
+          if (!el.closest('#player-modal') && !el.closest('#settings-modal') && !el.closest('#pw-gate') && !el.closest('#app-content>header')) {
+            el.remove();
+          }
+        }
+      });
+    } catch(_){}
   }
-  [600, 2200, 5000].forEach(t => setTimeout(sweep, t));
-  setInterval(sweep, 12000);
+  [300, 800, 1800, 3500, 6000].forEach(t => setTimeout(sweep, t));
+  setInterval(sweep, 8000);
+
 })();
 
 /* ─── CONSTANTS ────────────────────────────────────────────── */
@@ -2705,8 +2799,8 @@ else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch
         iframe.contentDocument.write(html);
         iframe.contentDocument.close();
       } catch(_) {
-        // Cross-origin fallback - open in new tab
-        window.open(url, '_blank');
+        // Cross-origin fallback — just set src directly
+        iframe.src = url;
       }
       iframe.onload = null;
     };
