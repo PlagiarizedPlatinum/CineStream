@@ -1444,6 +1444,7 @@ main { padding-top: 64px; min-height: 100vh; }
           <button class="settings-src-btn" data-src="autoembed">AutoEmbed</button>
           <button class="settings-src-btn" data-src="superembed">SuperEmbed</button>
           <button class="settings-src-btn" data-src="vsembed">VSEmbed</button>
+          <button class="settings-src-btn" data-src="vidlink">VidLink</button>
         </div>
       </div>
       <div>
@@ -1626,6 +1627,7 @@ main { padding-top: 64px; min-height: 100vh; }
       <button class="src-btn" data-src="autoembed">AutoEmbed</button>
       <button class="src-btn" data-src="superembed">SuperEmbed</button>
       <button class="src-btn" data-src="vsembed">VSEmbed</button>
+      <button class="src-btn" data-src="vidlink">VidLink</button>
     </div>
   </div>
 </div>
@@ -2117,6 +2119,11 @@ function setPlayerSrc() {
         ? `https://embed.su/embed/movie/${id}`
         : `https://embed.su/embed/tv/${id}/${season}/${episode}`;
       break;
+    case 'vidlink':
+      url = type === 'movie'
+        ? `https://vidlink.pro/movie/${id}`
+        : `https://vidlink.pro/tv/${id}/${season}/${episode}`;
+      break;
   }
 
   document.getElementById('player-iframe').src = url;
@@ -2132,6 +2139,7 @@ function resetSourceSwitcher() {
     { key: 'autoembed', label: 'AutoEmbed' },
     { key: 'superembed',label: 'SuperEmbed'},
     { key: 'vsembed',   label: 'VSEmbed'   },
+    { key: 'vidlink',   label: 'VidLink'   },
   ];
   sources.forEach(({ key, label }) => {
     const btn = document.createElement('button');
