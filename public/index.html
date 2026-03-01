@@ -313,7 +313,7 @@ main { padding-top: var(--header-h); }
   background: var(--nf-card);
 }
 .nf-card img {
-  width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block;
+  width: 100%; aspect-ratio: 2/3; object-fit: cover; object-position: top center; display: block;
   background: var(--nf-card);
 }
 .nf-card.wide img { aspect-ratio: 16/9; }
@@ -562,6 +562,18 @@ main { padding-top: var(--header-h); }
 .watch-btn { background: var(--nf-red); color: #fff; border: none; font-size: 11px; font-weight: 700; padding: 6px 16px; border-radius: 2px; display: flex; align-items: center; gap: 5px; transition: background var(--transition); }
 .watch-btn:hover { background: var(--nf-red-hover); }
 .watch-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+/* ══ CLEAR ALL BTN ════════════════════════════════════ */
+.clear-all-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: 1px solid #444; color: #aaa;
+  font-size: 11px; font-weight: 500; padding: 4px 12px;
+  border-radius: var(--radius); cursor: pointer;
+  transition: all var(--transition); white-space: nowrap;
+  letter-spacing: .3px;
+}
+.clear-all-btn:hover { border-color: #e50914; color: #e50914; background: rgba(229,9,20,.08); }
+.clear-all-btn::before { content: '✕'; font-size: 9px; opacity: .7; }
 
 /* ══ WATCHLIST ════════════════════════════════════════ */
 .watchlist-empty { display: flex; flex-direction: column; align-items: center; padding: 80px 24px; gap: 12px; color: var(--nf-text-muted); font-size: 15px; text-align: center; }
@@ -833,7 +845,7 @@ main { padding-top: var(--header-h); }
   <div id="continue-section" style="display:none" class="nf-section" style="padding-top:16px">
     <div class="nf-section-header" style="margin-bottom:12px">
       <span class="nf-section-title">Continue Watching</span>
-      <button class="see-all-link" id="clear-continue-btn" style="color:#aaa;opacity:1;font-size:11px">Clear All</button>
+      <button class="clear-all-btn" id="clear-continue-btn">Clear All</button>
     </div>
     <div class="nf-slider-wrap">
       <div class="nf-slider" id="continue-rail"></div>
@@ -858,18 +870,6 @@ main { padding-top: var(--header-h); }
       </div>
     </div>
     <div class="genre-row" id="movie-genres"></div>
-
-    <!-- Scream spotlight row -->
-    <div id="scream-section" class="nf-section" style="padding-top:0">
-      <div class="nf-section-header">
-        <span class="nf-section-title">🔪 Scream Collection</span>
-      </div>
-      <div class="nf-slider-wrap">
-        <button class="slider-arrow left" data-target="scream-row">‹</button>
-        <div class="nf-slider" id="scream-row"></div>
-        <button class="slider-arrow right" data-target="scream-row">›</button>
-      </div>
-    </div>
 
     <!-- Franchise view -->
     <div id="franchise-view" style="display:none" class="nf-section"></div>
@@ -950,7 +950,7 @@ main { padding-top: var(--header-h); }
     <div class="nf-section" style="padding-top:24px">
       <div class="nf-section-header" style="margin-bottom:20px">
         <span class="nf-section-title" style="font-size:clamp(16px,2vw,24px)">My List</span>
-        <button class="see-all-link" id="clear-watchlist-btn" style="color:#aaa;opacity:1;font-size:12px">Clear All</button>
+        <button class="clear-all-btn" id="clear-watchlist-btn">Clear All</button>
       </div>
       <div id="watchlist-empty" style="display:none" class="watchlist-empty">
         <div class="watchlist-empty-icon">♡</div>
@@ -1098,7 +1098,14 @@ function renderWatchlistTab(){
   if(!grid)return;
   grid.innerHTML='';
   const frag=document.createDocumentFragment();
-  list.forEach((item,i)=>frag.appendChild(makeCard({id:item.id,title:item.title,poster_path:item.poster,release_date:item.year,vote_average:item.rating},item.type,i)));
+  list.forEach((item,i)=>frag.appendChild(makeCard({
+    id: item.id,
+    title: item.title,
+    poster_path: item.poster || item.poster_path || null,
+    release_date: item.year || '',
+    first_air_date: item.year || '',
+    vote_average: item.rating || 0,
+  }, item.type, i)));
   grid.appendChild(frag);
 }
 
@@ -1130,8 +1137,17 @@ function renderContinueSection(){
   const frag=document.createDocumentFragment();
   list.forEach(item=>{
     const card=document.createElement('div');card.className='continue-card';
-    const imgSrc=item.backdrop?IMG_BASE+'w300'+item.backdrop:(item.poster?IMG_BASE+'w300'+item.poster:'');
-    card.innerHTML=`<img src="${imgSrc}" alt="${esc(item.title)}" loading="lazy"><div class="continue-card-info"><div class="continue-card-title">${esc(item.title)}</div><div class="continue-card-sub">${item.type==='tv'?`S${item.season||1}E${item.episode||1}`:item.year||''}</div></div><div class="continue-progress"><div class="continue-progress-bar" style="width:${item.progress||15}%"></div></div><button class="continue-remove" data-id="${item.id}" data-type="${item.type}">✕</button>`;
+    // prefer backdrop for wide card, fall back to poster, then show title text
+    const imgSrc=item.backdrop
+      ? IMG_BASE+'w500'+item.backdrop
+      : item.poster
+        ? IMG_BASE+'w342'+item.poster
+        : '';
+    const imgHtml=imgSrc
+      ? `<img src="${imgSrc}" alt="${esc(item.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const fallbackHtml=`<div class="no-poster wide" style="display:${imgSrc?'none':'flex'};aspect-ratio:16/9">${esc(item.title)}</div>`;
+    card.innerHTML=`${imgHtml}${fallbackHtml}<div class="continue-card-info"><div class="continue-card-title">${esc(item.title)}</div><div class="continue-card-sub">${item.type==='tv'?`S${item.season||1}E${item.episode||1}`:item.year||''}</div></div><div class="continue-progress"><div class="continue-progress-bar" style="width:${item.progress||15}%"></div></div><button class="continue-remove" data-id="${item.id}" data-type="${item.type}">✕</button>`;
     card.addEventListener('click',e=>{
       if(e.target.closest('.continue-remove')){e.stopPropagation();removeFromContinue(item.id,item.type);return;}
       if(item.type==='movie')playMovie(item);else playTV(item);
@@ -1301,7 +1317,10 @@ function makeCard(item,type,delay=0){
   if(img){
     const imgEl=document.createElement('img');
     imgEl.src=img;imgEl.alt=esc(title);imgEl.loading='lazy';imgEl.decoding='async';
-    imgEl.onerror=function(){this.parentElement.innerHTML=`<div class="no-poster">${esc(title)}</div>`;};
+    imgEl.onerror=function(){
+      const np=document.createElement('div');np.className='no-poster';np.textContent=title;
+      this.parentElement.replaceChild(np,this);
+    };
     card.appendChild(imgEl);
   }else{
     const np=document.createElement('div');np.className='no-poster';np.textContent=title;
@@ -1487,7 +1506,6 @@ async function loadGenres(){
         document.getElementById('franchise-view').style.display='none';
         document.getElementById('movies-grid').style.display='';
         document.getElementById('movies-load-more-wrap').style.display='none';
-        document.getElementById('scream-section').style.display='none';
         fetchByGenre(g.id);
       });
       wrap.appendChild(chip);
@@ -1533,7 +1551,6 @@ const FRANCHISES=[
 function showFranchises(){
   document.getElementById('movies-grid').style.display='none';
   document.getElementById('movie-genres').style.display='none';
-  document.getElementById('scream-section').style.display='none';
   document.getElementById('movies-load-more-wrap').style.display='none';
   const fv=document.getElementById('franchise-view');fv.style.display='block';
   if(state.franchiseDone)return;state.franchiseDone=true;
@@ -1652,16 +1669,35 @@ function renderMatches(matches){
 async function playMatch(matchKey){
   const match=matchMap.get(matchKey);if(!match)return;
   const sources=match.sources||match.streams||[];
-  if(!sources.length){showToast('No streams available','');return;}
-  const src=sources[0];
-  const streamUrl=src.url||src.hls||src.source||src;
-  if(!streamUrl){showToast('No stream URL','');return;}
+  if(!sources.length){showToast('No streams available for this match');return;}
+  // try each source until we find a usable URL
+  let streamUrl='';
+  for(const src of sources){
+    const candidate=src.url||src.hls||src.embedUrl||src.source||(typeof src==='string'?src:'');
+    if(candidate){streamUrl=candidate;break;}
+  }
+  if(!streamUrl){showToast('No stream URL found');return;}
   state.currentMedia={type:'football',id:matchKey,title:match.title||'Match',source:streamUrl};
   document.getElementById('player-title').textContent=match.title||'Live Match';
-  document.getElementById('player-subtitle').textContent=match.competition||'';
+  document.getElementById('player-subtitle').textContent=match.competition||match.category||'Live Sports';
   document.getElementById('episode-selector-wrap').style.display='none';
-  const sw=document.getElementById('source-switcher');sw.innerHTML='<span class="source-label">Live Stream</span>';
-  document.getElementById('player-iframe').src=streamUrl;
+  // build source switcher with all available streams
+  const sw=document.getElementById('source-switcher');
+  sw.innerHTML='<span class="source-label">Stream</span>';
+  (sources.length?sources:[{url:streamUrl}]).forEach((src,i)=>{
+    const url=src.url||src.hls||src.embedUrl||src.source||(typeof src==='string'?src:'');
+    if(!url)return;
+    const btn=document.createElement('button');
+    btn.className=`src-btn${i===0?' active':''}`;
+    btn.textContent=src.name||src.label||`Stream ${i+1}`;
+    btn.addEventListener('click',()=>{
+      sw.querySelectorAll('.src-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('player-iframe').src=frameUrl(url);
+    });
+    sw.appendChild(btn);
+  });
+  document.getElementById('player-iframe').src=frameUrl(streamUrl);
   openPlayer();
 }
 
@@ -1760,7 +1796,6 @@ function wireEvents(){
     document.getElementById('franchise-view').style.display='none';
     document.getElementById('movies-grid').style.display='';
     document.getElementById('movie-genres').style.display='';
-    document.getElementById('scream-section').style.display='';
     document.querySelectorAll('.genre-chip').forEach(c=>c.classList.remove('active'));
     fetchMovies(btn.dataset.movieType);
   }));
@@ -1818,7 +1853,7 @@ function wireEvents(){
 function initApp(){
   loadSettings();wireEvents();
   updateWatchlistBadge();renderContinueSection();
-  loadHero();fetchMovies('popular');loadGenres();loadScreamRow();
+  loadHero();fetchMovies('popular');loadGenres();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.ready.then(reg=>reg.active?.postMessage('PING'));
     navigator.serviceWorker.addEventListener('message',e=>{
