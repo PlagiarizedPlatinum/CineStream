@@ -521,7 +521,9 @@ console.log('[RW-FRAME] Shield v8 ABSOLUTE NUKE active — 33 vectors');
   id="embed"
   src="${htmlUrl}"
   allowfullscreen
-  allow="autoplay; fullscreen; encrypted-media; picture-in-picture; accelerometer; gyroscope"
+  allow="autoplay; fullscreen *; encrypted-media; picture-in-picture; accelerometer; gyroscope"
+  webkitallowfullscreen
+  mozallowfullscreen
   referrerpolicy="no-referrer-when-downgrade"
   loading="eager"
   title="Video player"
@@ -557,11 +559,11 @@ console.log('[RW-FRAME] Shield v8 ABSOLUTE NUKE active — 33 vectors');
         'usb=()', 'notifications=()', 'push=()', 'interest-cohort=()',
         'browsing-topics=()', 'ambient-light-sensor=()', 'battery=()',
         'display-capture=()', 'document-domain=()',
-        'encrypted-media=(self)', 'fullscreen=(self)', 'gamepad=()',
-        'gyroscope=(self)', 'magnetometer=()', 'midi=()',
-        'picture-in-picture=(self)', 'publickey-credentials-get=()',
+        'encrypted-media=*', 'fullscreen=*', 'gamepad=()',
+        'gyroscope=*', 'magnetometer=()', 'midi=()',
+        'picture-in-picture=*', 'publickey-credentials-get=()',
         'screen-wake-lock=()', 'serial=()', 'sync-xhr=(self)',
-        'xr-spatial-tracking=()', 'accelerometer=(self)', 'autoplay=(self)',
+        'xr-spatial-tracking=()', 'accelerometer=*', 'autoplay=*',
       ].join(', '),
       'Content-Security-Policy': [
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob: data:",
