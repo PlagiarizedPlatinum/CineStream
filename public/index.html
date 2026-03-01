@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>ReelWave</title>
 <script>
 (function(){
@@ -620,13 +622,21 @@ main { padding-top: var(--header-h); }
 
 /* ══ MOBILE NAVIGATION ═══════════════════════════════ */
 .mobile-nav {
-  display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 600;
-  background: rgba(20,20,20,.98); border-top: 1px solid #2f2f2f;
-  height: var(--mobile-nav-h); padding-bottom: var(--sab);
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 600;
+  background: rgba(20,20,20,.98);
+  border-top: 1px solid #2f2f2f;
+  height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   align-items: center;
-  transform: translateZ(0); /* force GPU layer - prevents scroll-jank lift */
+  /* Force own compositing layer — prevents iOS scroll jank from moving it */
+  -webkit-transform: translate3d(0,0,0);
+  transform: translate3d(0,0,0);
   will-change: transform;
-  -webkit-transform: translateZ(0);
+  /* Prevent iOS from treating it as scrollable context */
+  -webkit-overflow-scrolling: auto;
 }
 .mob-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -657,7 +667,7 @@ main { padding-top: var(--header-h); }
   #search-input:focus { width: 180px; }
   .shield-indicator { display: none; }
   .mobile-nav { display: flex; }
-  main { padding-top: var(--header-h); padding-bottom: calc(var(--mobile-nav-h) + var(--sab)); }
+  main { padding-top: var(--header-h); padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + 8px); }
   .nf-hero { height: 70vw; min-height: 240px; }
   .hero-content { width: 70%; bottom: 28%; }
   .hero-logo-text { font-size: clamp(22px, 5vw, 36px); }
