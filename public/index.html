@@ -81,7 +81,7 @@ a { text-decoration: none; color: inherit; }
 @keyframes heroKen { 0%{transform:scale(1)} 100%{transform:scale(1.05)} }
 @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:none;opacity:1} }
 
-/* ══ PASSWORD GATE ═══════════════════════════════════ */
+/* ══ AUTH GATE ════════════════════════════════════════ */
 #pw-gate {
   position: fixed; inset: 0; z-index: 9999;
   background: var(--nf-black);
@@ -100,26 +100,83 @@ a { text-decoration: none; color: inherit; }
 }
 .gate-box {
   background: rgba(0,0,0,.75); border-radius: 4px;
-  padding: 60px 68px; width: 100%; max-width: 450px;
+  padding: 48px 56px; width: 100%; max-width: 450px;
   position: relative; z-index: 1;
 }
-.gate-box h2 { font-size: 32px; font-weight: 700; margin-bottom: 28px; }
-#pw-input {
+.gate-box h2 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+.gate-subtitle { font-size: 14px; color: #b3b3b3; margin-bottom: 24px; }
+.gate-tabs {
+  display: flex; gap: 0; margin-bottom: 24px; border-bottom: 1px solid #333;
+}
+.gate-tab {
+  background: none; border: none; color: #8c8c8c; font-size: 15px; font-weight: 600;
+  padding: 8px 20px 10px; cursor: pointer; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; transition: all .15s;
+}
+.gate-tab.active { color: #fff; border-bottom-color: var(--nf-red); }
+.gate-panel { display: none; }
+.gate-panel.active { display: block; }
+.gate-field {
   background: #333; border: none; border-bottom: 2px solid #8c8c8c;
   color: #fff; font-size: 16px; padding: 16px 20px; border-radius: var(--radius);
-  width: 100%; outline: none; margin-bottom: 16px;
+  width: 100%; outline: none; margin-bottom: 12px;
   transition: border-color var(--transition);
 }
-#pw-input:focus { border-bottom-color: #e87c26; }
-#pw-input::placeholder { color: #8c8c8c; }
-#pw-submit {
+.gate-field:focus { border-bottom-color: #e87c26; }
+.gate-field::placeholder { color: #8c8c8c; }
+.gate-btn {
   background: var(--nf-red); color: #fff; border: none;
   font-size: 16px; font-weight: 700; padding: 16px;
   border-radius: var(--radius); width: 100%; letter-spacing: 0.5px;
-  transition: background var(--transition);
+  transition: background var(--transition); margin-top: 4px;
 }
-#pw-submit:hover { background: var(--nf-red-hover); }
-#pw-error { color: #e87c26; font-size: 14px; min-height: 20px; margin-top: 8px; }
+.gate-btn:hover { background: var(--nf-red-hover); }
+.gate-btn:disabled { opacity: .5; cursor: not-allowed; }
+.gate-error { color: #e87c26; font-size: 13px; min-height: 18px; margin-top: 6px; }
+.gate-divider {
+  display: flex; align-items: center; gap: 12px;
+  color: #555; font-size: 12px; margin: 18px 0;
+}
+.gate-divider::before, .gate-divider::after { content:''; flex:1; height:1px; background:#333; }
+.gate-global-btn {
+  background: rgba(255,255,255,.08); border: 1px solid #444; color: #b3b3b3;
+  font-size: 14px; padding: 12px; border-radius: var(--radius); width: 100%;
+  transition: all .15s; cursor: pointer;
+}
+.gate-global-btn:hover { background: rgba(255,255,255,.14); color: #fff; border-color: #666; }
+
+/* ══ ACCOUNT BUTTON & MENU ════════════════════════════ */
+.account-btn {
+  background: none; border: none; color: #e5e5e5;
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 13px; padding: 4px 8px; transition: color .15s;
+}
+.account-btn:hover { color: #fff; }
+.account-avatar {
+  width: 28px; height: 28px; background: var(--nf-red); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.account-dropdown {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+  min-width: 200px; padding: 8px 0; z-index: 600;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+  display: none; animation: fadeIn .15s ease;
+}
+.account-dropdown.open { display: block; }
+.account-dropdown-email {
+  padding: 8px 16px 12px; font-size: 12px; color: #666;
+  border-bottom: 1px solid #2a2a2a; margin-bottom: 4px; word-break: break-all;
+}
+.account-dropdown-item {
+  display: block; width: 100%; background: none; border: none; text-align: left;
+  color: #e5e5e5; font-size: 13px; padding: 10px 16px; cursor: pointer;
+  transition: background .1s;
+}
+.account-dropdown-item:hover { background: rgba(255,255,255,.07); }
+.account-dropdown-item.danger { color: #e87c26; }
+.account-wrap { position: relative; }
 
 /* ══ APP ══════════════════════════════════════════════ */
 #app-content { display: none; }
@@ -708,15 +765,43 @@ main { padding-top: var(--header-h); }
 </head>
 <body>
 
-<!-- PASSWORD GATE -->
+<!-- AUTH GATE -->
 <div id="pw-gate">
   <div class="gate-logo">REELWAVE</div>
   <div class="gate-box">
-    <h2>Sign In</h2>
-    <p style="font-size:14px;color:#b3b3b3;margin-bottom:24px">Enter your access code to continue</p>
-    <input type="password" id="pw-input" placeholder="Password" autocomplete="current-password">
-    <button id="pw-submit">Sign In</button>
-    <div id="pw-error"></div>
+    <h2 id="gate-title">Welcome back</h2>
+    <p class="gate-subtitle" id="gate-sub">Sign in to sync your watchlist &amp; settings across devices</p>
+
+    <!-- Tabs: Login / Register -->
+    <div class="gate-tabs">
+      <button class="gate-tab active" id="tab-login" onclick="switchGateTab('login')">Sign In</button>
+      <button class="gate-tab" id="tab-register" onclick="switchGateTab('register')">Create Account</button>
+    </div>
+
+    <!-- Login Panel -->
+    <div class="gate-panel active" id="panel-login">
+      <input class="gate-field" type="email" id="login-email" placeholder="Email address" autocomplete="email">
+      <input class="gate-field" type="password" id="login-pass" placeholder="Password" autocomplete="current-password">
+      <button class="gate-btn" id="login-btn">Sign In</button>
+      <div class="gate-error" id="login-error"></div>
+    </div>
+
+    <!-- Register Panel -->
+    <div class="gate-panel" id="panel-register">
+      <input class="gate-field" type="email" id="reg-email" placeholder="Email address" autocomplete="email">
+      <input class="gate-field" type="password" id="reg-pass" placeholder="Password (min 6 chars)" autocomplete="new-password">
+      <input class="gate-field" type="password" id="reg-pass2" placeholder="Confirm password" autocomplete="new-password">
+      <button class="gate-btn" id="reg-btn">Create Account</button>
+      <div class="gate-error" id="reg-error"></div>
+    </div>
+
+    <!-- Global password fallback -->
+    <div id="global-pw-section">
+      <div class="gate-divider">or use access code</div>
+      <input class="gate-field" type="password" id="global-pw-input" placeholder="Site access code" autocomplete="off">
+      <button class="gate-global-btn" id="global-pw-btn">Continue with Access Code</button>
+      <div class="gate-error" id="global-pw-error"></div>
+    </div>
   </div>
 </div>
 
@@ -747,6 +832,17 @@ main { padding-top: var(--header-h); }
     <button class="header-icon-btn" id="settings-btn" aria-label="Settings">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.63-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
     </button>
+    <div class="account-wrap" id="account-wrap" style="display:none">
+      <button class="account-btn" id="account-btn">
+        <div class="account-avatar" id="account-avatar">?</div>
+        <span id="account-label" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px"></span>
+      </button>
+      <div class="account-dropdown" id="account-dropdown">
+        <div class="account-dropdown-email" id="account-dropdown-email"></div>
+        <button class="account-dropdown-item" onclick="document.getElementById('settings-modal').classList.add('active');document.getElementById('account-dropdown').classList.remove('open')">⚙️ Settings</button>
+        <button class="account-dropdown-item danger" id="logout-btn">↩ Sign Out</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -1951,38 +2047,281 @@ function initApp(){
 }
 </script>
 
-<!-- AUTH SCRIPT -->
+<!-- AUTH & ACCOUNT SCRIPT -->
 <script>
-(async function auth(){
-  const LS_KEY='cs_auth_v2';let HASH='';
-  try{const res=await fetch('/api/config');const data=await res.json();HASH=(data.hash||'').toLowerCase().trim();}catch(_){HASH='';}
-  if(!HASH){
-    document.getElementById('pw-error').textContent='Auth configuration error. Contact admin.';
-    document.getElementById('pw-submit').disabled=true;return;
+/* ══════════════════════════════════════════════════════
+   REELWAVE ACCOUNT SYSTEM v2
+   - Email/password accounts stored in Neon DB
+   - Global site access code fallback (PW_HASH)
+   - Cloud sync for settings, watchlist, continue-watching
+   - localStorage used as cache / offline fallback
+══════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+const TOKEN_KEY = 'rw_token_v2';
+const USER_KEY  = 'rw_user_v2';
+const SYNC_PENDING_KEY = 'rw_sync_pending';
+
+let authToken = null;
+let authUser  = null;  // { id, email, isGlobal? }
+
+// ── Gate tab switching ──────────────────────────────
+window.switchGateTab = function(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab==='login');
+  document.getElementById('tab-register').classList.toggle('active', tab==='register');
+  document.getElementById('panel-login').classList.toggle('active', tab==='login');
+  document.getElementById('panel-register').classList.toggle('active', tab==='register');
+};
+
+// ── Helpers ─────────────────────────────────────────
+function setLoading(btnId, loading, text) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.textContent = loading ? 'Please wait…' : text;
+}
+function setError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (el) el.textContent = msg || '';
+}
+async function apiPost(url, body, token) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  return res.json();
+}
+async function apiGet(url, token) {
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, { headers });
+  return res.json();
+}
+
+// ── Unlock app ──────────────────────────────────────
+function unlock(token, user) {
+  authToken = token;
+  authUser  = user;
+  try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch(_) {}
+  document.getElementById('pw-gate').style.display = 'none';
+  document.body.classList.add('authenticated');
+  document.body.style.overflow = '';
+  if (window.innerWidth <= 768) {
+    const mn = document.getElementById('mobile-nav');
+    if (mn) mn.style.display = 'flex';
   }
-  async function sha256(str){
-    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  // Show account indicator
+  if (!user.isGlobal) {
+    const wrap = document.getElementById('account-wrap');
+    if (wrap) wrap.style.display = '';
+    const avatar = document.getElementById('account-avatar');
+    if (avatar) avatar.textContent = (user.email || '?')[0].toUpperCase();
+    const label = document.getElementById('account-label');
+    if (label) label.textContent = user.email.split('@')[0];
+    const emailEl = document.getElementById('account-dropdown-email');
+    if (emailEl) emailEl.textContent = user.email;
+  }
+  initApp();
+  // Pull cloud data after init (won't block)
+  if (!user.isGlobal) syncFromCloud();
+}
+
+// ── Login ────────────────────────────────────────────
+document.getElementById('login-btn').addEventListener('click', async () => {
+  setError('login-error', '');
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  if (!email || !pass) { setError('login-error', 'Please fill in all fields.'); return; }
+  setLoading('login-btn', true, 'Sign In');
+  try {
+    const data = await apiPost('/api/auth?action=login', { email, password: pass });
+    if (data.error) { setError('login-error', data.error); }
+    else { unlock(data.token, data.user); }
+  } catch(e) { setError('login-error', 'Connection error. Try again.'); }
+  setLoading('login-btn', false, 'Sign In');
+});
+document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('login-btn').click(); });
+
+// ── Register ─────────────────────────────────────────
+document.getElementById('reg-btn').addEventListener('click', async () => {
+  setError('reg-error', '');
+  const email = document.getElementById('reg-email').value.trim();
+  const pass  = document.getElementById('reg-pass').value;
+  const pass2 = document.getElementById('reg-pass2').value;
+  if (!email || !pass || !pass2) { setError('reg-error', 'Please fill in all fields.'); return; }
+  if (pass !== pass2) { setError('reg-error', 'Passwords do not match.'); return; }
+  if (pass.length < 6) { setError('reg-error', 'Password must be at least 6 characters.'); return; }
+  setLoading('reg-btn', true, 'Create Account');
+  try {
+    const data = await apiPost('/api/auth?action=register', { email, password: pass });
+    if (data.error) { setError('reg-error', data.error); }
+    else { unlock(data.token, data.user); }
+  } catch(e) { setError('reg-error', 'Connection error. Try again.'); }
+  setLoading('reg-btn', false, 'Create Account');
+});
+
+// ── Global access code ───────────────────────────────
+(async function setupGlobal() {
+  let HASH = '';
+  try { const res = await fetch('/api/config'); const d = await res.json(); HASH = (d.hash||'').toLowerCase().trim(); } catch(_) {}
+  const section = document.getElementById('global-pw-section');
+  // Hide global section if PW_HASH not configured
+  if (!HASH) { if(section) section.style.display = 'none'; return; }
+
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }
-  function unlock(){
-    document.getElementById('pw-gate').style.display='none';
-    document.body.classList.add('authenticated');
-    document.body.style.overflow='';
-    if(window.innerWidth<=768){const mn=document.getElementById('mobile-nav');if(mn)mn.style.display='flex';}
-    initApp();
+  async function tryGlobal() {
+    setError('global-pw-error', '');
+    const val = document.getElementById('global-pw-input').value;
+    if (!val) { setError('global-pw-error', 'Enter the access code.'); return; }
+    const h = await sha256(val);
+    if (h === HASH) {
+      unlock('__global__', { id: 0, email: 'guest', isGlobal: true });
+    } else {
+      setError('global-pw-error', 'Incorrect access code.');
+      document.getElementById('global-pw-input').value = '';
+    }
   }
-  if(HASH&&localStorage.getItem(LS_KEY)===HASH){unlock();return;}
-  document.body.style.overflow='hidden';
-  document.getElementById('pw-input').focus();
-  async function attempt(){
-    const input=document.getElementById('pw-input');const errEl=document.getElementById('pw-error');const val=input.value;
-    if(!val){errEl.textContent='Please enter the password.';return;}
-    const h=await sha256(val);
-    if(h===HASH){try{localStorage.setItem(LS_KEY,HASH);}catch(_){}unlock();}
-    else{errEl.textContent='Incorrect password. Try again.';input.value='';input.focus();}
+  document.getElementById('global-pw-btn').addEventListener('click', tryGlobal);
+  document.getElementById('global-pw-input').addEventListener('keydown', e => { if(e.key==='Enter') tryGlobal(); });
+})();
+
+// ── Logout ───────────────────────────────────────────
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  try { await apiPost('/api/auth?action=logout', {}, authToken); } catch(_) {}
+  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
+  authToken = null; authUser = null;
+  location.reload();
+});
+
+// ── Account dropdown toggle ──────────────────────────
+document.getElementById('account-btn')?.addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('account-dropdown').classList.toggle('open');
+});
+document.addEventListener('click', () => {
+  document.getElementById('account-dropdown')?.classList.remove('open');
+});
+
+// ── Cloud sync ───────────────────────────────────────
+async function syncFromCloud() {
+  if (!authToken || authToken === '__global__') return;
+  try {
+    const data = await apiGet('/api/user?field=all', authToken);
+    if (data.error) return;
+    // Merge: cloud wins for settings; merge watchlist/continues arrays
+    if (data.settings && Object.keys(data.settings).length) {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({...state.settings, ...data.settings})); } catch(_) {}
+      loadSettings(); // re-apply
+    }
+    if (data.watchlist && Array.isArray(data.watchlist) && data.watchlist.length) {
+      const local = getWatchlist();
+      // deduplicate by id+type, cloud items take precedence but keep local items too
+      const merged = [...data.watchlist];
+      for (const item of local) {
+        if (!merged.find(m => String(m.id)===String(item.id) && m.type===item.type)) merged.push(item);
+      }
+      saveWatchlist(merged);
+      updateWatchlistBadge();
+    }
+    if (data.continues && Array.isArray(data.continues) && data.continues.length) {
+      const local = getContinue();
+      const merged = [...data.continues];
+      for (const item of local) {
+        if (!merged.find(m => String(m.id)===String(item.id) && m.type===item.type)) merged.push(item);
+      }
+      saveContinue(merged);
+      renderContinueSection();
+    }
+  } catch(_) {}
+}
+
+async function pushToCloud(field, value) {
+  if (!authToken || authToken === '__global__') return;
+  try {
+    await apiPost(`/api/user?field=${field}`, { [field]: value }, authToken);
+  } catch(_) {
+    // Queue for retry
+    try {
+      const pending = JSON.parse(localStorage.getItem(SYNC_PENDING_KEY)||'[]');
+      pending.push({ field, value, ts: Date.now() });
+      localStorage.setItem(SYNC_PENDING_KEY, JSON.stringify(pending.slice(-20)));
+    } catch(_) {}
   }
-  document.getElementById('pw-submit').addEventListener('click',attempt);
-  document.getElementById('pw-input').addEventListener('keydown',e=>{if(e.key==='Enter')attempt();});
+}
+
+// Patch the existing save functions to also push to cloud
+const _origSaveSettings = window.saveSettings;
+window.saveSettings = function() {
+  if (_origSaveSettings) _origSaveSettings();
+  else { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(_) {} }
+  pushToCloud('settings', state.settings);
+};
+
+const _origSaveWatchlist = window.saveWatchlist;
+window.saveWatchlist = function(list) {
+  if (_origSaveWatchlist) _origSaveWatchlist(list);
+  else { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); } catch(_) {} }
+  pushToCloud('watchlist', list);
+};
+
+const _origSaveContinue = window.saveContinue;
+window.saveContinue = function(list) {
+  if (_origSaveContinue) _origSaveContinue(list);
+  else { try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(list)); } catch(_) {} }
+  pushToCloud('continues', list);
+};
+
+// ── Auto-login from stored token ─────────────────────
+(async function autoLogin() {
+  const storedToken = localStorage.getItem(TOKEN_KEY);
+  const storedUser  = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
+
+  if (!storedToken || !storedUser) {
+    // Show gate
+    document.body.style.overflow = 'hidden';
+    document.getElementById('login-email')?.focus();
+    return;
+  }
+
+  // Global token — verify hash still matches
+  if (storedToken === '__global__') {
+    try {
+      const res = await fetch('/api/config');
+      const d = await res.json();
+      const HASH = (d.hash||'').toLowerCase().trim();
+      if (!HASH) { clearStoredAuth(); return; }
+      // Global tokens don't expire but we re-validate the hash exists
+      unlock(storedToken, storedUser);
+    } catch(_) {
+      // Offline — trust the stored token
+      unlock(storedToken, storedUser);
+    }
+    return;
+  }
+
+  // Verify JWT session is still valid
+  try {
+    const data = await apiGet('/api/auth?action=verify', storedToken);
+    if (data.ok) {
+      unlock(storedToken, data.user);
+    } else {
+      clearStoredAuth();
+    }
+  } catch(_) {
+    // Network error — allow offline access with stored token
+    unlock(storedToken, storedUser);
+  }
+})();
+
+function clearStoredAuth() {
+  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
+  document.body.style.overflow = 'hidden';
+  document.getElementById('login-email')?.focus();
+}
+
 })();
 </script>
 </body>

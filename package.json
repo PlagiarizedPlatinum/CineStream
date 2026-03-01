@@ -1,0 +1,9 @@
+{
+  "name": "reelwave",
+  "version": "2.0.0",
+  "private": true,
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "jose": "^5.9.6"
+  }
+}
