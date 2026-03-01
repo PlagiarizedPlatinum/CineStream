@@ -801,6 +801,10 @@ main { padding-top: var(--header-h); }
       <input class="gate-field" type="password" id="global-pw-input" placeholder="Site access code" autocomplete="off">
       <button class="gate-global-btn" id="global-pw-btn">Continue with Access Code</button>
       <div class="gate-error" id="global-pw-error"></div>
+      <p style="text-align:center;margin-top:14px;font-size:13px;color:#666">
+        Used the access code before?
+        <button onclick="switchGateTab('login')" style="background:none;border:none;color:#b3b3b3;font-size:13px;cursor:pointer;text-decoration:underline;padding:0">Sign in to your account instead</button>
+      </p>
     </div>
   </div>
 </div>
@@ -832,6 +836,9 @@ main { padding-top: var(--header-h); }
     <button class="header-icon-btn" id="settings-btn" aria-label="Settings">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.63-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
     </button>
+    <!-- Shown when logged in via access code -->
+    <button class="header-icon-btn" id="switch-to-account-btn" style="display:none;font-size:12px;color:#b3b3b3;white-space:nowrap;width:auto;padding:4px 10px;border:1px solid #444;border-radius:4px;" title="Sign in to a full account">Sign In</button>
+    <!-- Shown when logged in via account -->
     <div class="account-wrap" id="account-wrap" style="display:none">
       <button class="account-btn" id="account-btn">
         <div class="account-avatar" id="account-avatar">?</div>
@@ -2120,6 +2127,16 @@ function unlock(token, user) {
     if (label) label.textContent = user.email.split('@')[0];
     const emailEl = document.getElementById('account-dropdown-email');
     if (emailEl) emailEl.textContent = user.email;
+  } else {
+    // Global user — show "Sign In" button in header so they can switch to an account
+    const switchBtn = document.getElementById('switch-to-account-btn');
+    if (switchBtn) {
+      switchBtn.style.display = '';
+      switchBtn.addEventListener('click', () => {
+        try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
+        location.reload();
+      });
+    }
   }
   initApp();
   // Pull cloud data after init (won't block)
