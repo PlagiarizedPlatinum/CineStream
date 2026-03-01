@@ -576,7 +576,7 @@ main { padding-top: var(--header-h); }
 .clear-all-btn::before { content: '✕'; font-size: 9px; opacity: .7; }
 
 /* ══ WATCHLIST ════════════════════════════════════════ */
-.watchlist-empty { display: flex; flex-direction: column; align-items: center; padding: 80px 24px; gap: 12px; color: var(--nf-text-muted); font-size: 15px; text-align: center; }
+.watchlist-empty { display: none; flex-direction: column; align-items: center; padding: 80px 24px; gap: 12px; color: var(--nf-text-muted); font-size: 15px; text-align: center; }
 .watchlist-empty-icon { font-size: 60px; margin-bottom: 8px; opacity: .4; }
 
 /* ══ SETTINGS MODAL ══════════════════════════════════ */
@@ -624,6 +624,9 @@ main { padding-top: var(--header-h); }
   background: rgba(20,20,20,.98); border-top: 1px solid #2f2f2f;
   height: var(--mobile-nav-h); padding-bottom: var(--sab);
   align-items: center;
+  transform: translateZ(0); /* force GPU layer - prevents scroll-jank lift */
+  will-change: transform;
+  -webkit-transform: translateZ(0);
 }
 .mob-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1093,19 +1096,28 @@ function renderWatchlistTab(){
   const grid=document.getElementById('watchlist-grid');
   const empty=document.getElementById('watchlist-empty');
   const list=getWatchlist();
-  if(!list.length){if(empty)empty.style.display='';if(grid)grid.innerHTML='';return;}
-  if(empty)empty.style.display='none';
   if(!grid)return;
+  if(!list.length){
+    if(empty)empty.style.display='flex';
+    grid.innerHTML='';
+    return;
+  }
+  if(empty)empty.style.display='none';
   grid.innerHTML='';
   const frag=document.createDocumentFragment();
-  list.forEach((item,i)=>frag.appendChild(makeCard({
-    id: item.id,
-    title: item.title,
-    poster_path: item.poster || item.poster_path || null,
-    release_date: item.year || '',
-    first_air_date: item.year || '',
-    vote_average: item.rating || 0,
-  }, item.type, i)));
+  list.forEach((item,i)=>{
+    // stored item: {id, type, title, poster (path only), year, rating}
+    const cardData={
+      id: item.id,
+      title: item.title,
+      name: item.title,
+      poster_path: item.poster||item.poster_path||null,
+      release_date: item.year||'',
+      first_air_date: item.year||'',
+      vote_average: parseFloat(item.rating)||0,
+    };
+    frag.appendChild(makeCard(cardData, item.type||'movie', i));
+  });
   grid.appendChild(frag);
 }
 
@@ -1522,20 +1534,6 @@ const SCREAM_IDS=[
   {id:646385,title:'Scream',year:'2022'},{id:934433,title:'Scream VI',year:'2023'},
   {id:1159559,title:'Scream VII',year:'2026'},
 ];
-function loadScreamRow(){
-  const row=document.getElementById('scream-row');
-  row.innerHTML=SCREAM_IDS.map(()=>`<div class="nf-card nf-skeleton" style="flex:0 0 min(20%,140px)"><div style="aspect-ratio:2/3"></div></div>`).join('');
-  SCREAM_IDS.forEach((entry,idx)=>{
-    tmdb(`/movie/${entry.id}`).then(movie=>{
-      const card=makeCard(movie,'movie',idx);card.style.cssText='flex:0 0 min(20%,140px)';
-      row.children[idx]?.replaceWith(card);
-    }).catch(()=>{
-      const card=makeCard({id:entry.id,title:entry.title,release_date:entry.year},'movie',idx);card.style.cssText='flex:0 0 min(20%,140px)';
-      row.children[idx]?.replaceWith(card);
-    });
-  });
-}
-
 /* ════════════════════════════════════════════════════
    FRANCHISES
 ════════════════════════════════════════════════════ */
@@ -1581,124 +1579,202 @@ function showFranchises(){
 /* ════════════════════════════════════════════════════
    SPORTS
 ════════════════════════════════════════════════════ */
-const LEAGUE_KEYWORDS={
-  epl:['liverpool','arsenal','chelsea','manchester','man city','man united','tottenham','spurs','newcastle','aston villa','west ham','everton','brighton','brentford','fulham','wolves','crystal palace','nottingham forest','leicester'],
-  championship:['derby','blackburn','norwich','swansea','sheffield wednesday','coventry','stoke','burnley','oxford','west brom','qpr','sheffield utd','millwall','leeds','sunderland'],
-  ucl:['champions league','ucl','real madrid','barcelona','psg','juventus','inter','milan','porto','dortmund','bayern','celtic','rangers'],
-  laliga:['barcelona','real madrid','atletico','sevilla','real betis','villarreal','athletic club','mallorca'],
-  serie_a:['inter milan','juventus','napoli','ac milan','atalanta','lazio','roma','fiorentina'],
-  bundesliga:['dortmund','bvb','bayern munich','leverkusen','eintracht','freiburg','wolfsburg','mainz'],
-  ligue1:['psg','paris saint-germain','marseille','lyon','monaco','rennes','toulouse','lille'],
-  mls:['inter miami','la galaxy','seattle sounders','portland timbers','atlanta united','new york city'],
-  rugby:['rugby','harlequins','bath','bristol','exeter','leicester tigers','northampton','all blacks'],
-  tennis:['tennis','atp','wta','wimbledon','us open','french open','australian open','grand slam'],
-  nba:['nba','lakers','celtics','warriors','bulls','heat','knicks','nets'],
-  nfl:['nfl','chiefs','patriots','cowboys','49ers','packers','ravens','eagles'],
-  nhl:['nhl','maple leafs','bruins','rangers','blackhawks','penguins'],
-  boxing:['boxing','mma','ufc','fight','bout'],
-  f1:['formula 1','f1','grand prix','hamilton','verstappen','ferrari','mercedes','red bull'],
+/* ════════════════════════════════════════════════════
+   SPORTS
+════════════════════════════════════════════════════ */
+// streamed.pk sport IDs
+const SPORT_IDS=['football','basketball','american-football','hockey','baseball','motor-sports',
+  'fight','tennis','rugby','golf','billiards','afl','darts','cricket','other-sports'];
+
+// Map our league filter chips → sport ID or keyword filter
+const LEAGUE_MAP={
+  all:     {sports:SPORT_IDS, keyword:null},
+  epl:     {sports:['football'], keyword:['premier league','epl']},
+  championship:{sports:['football'], keyword:['championship']},
+  ucl:     {sports:['football'], keyword:['champions league','ucl']},
+  laliga:  {sports:['football'], keyword:['la liga','laliga']},
+  serie_a: {sports:['football'], keyword:['serie a']},
+  bundesliga:{sports:['football'], keyword:['bundesliga']},
+  ligue1:  {sports:['football'], keyword:['ligue 1','ligue1']},
+  mls:     {sports:['football'], keyword:['mls','major league soccer']},
+  rugby:   {sports:['rugby'],    keyword:null},
+  tennis:  {sports:['tennis'],   keyword:null},
+  nba:     {sports:['basketball'],keyword:['nba']},
+  nfl:     {sports:['american-football'],keyword:null},
+  nhl:     {sports:['hockey'],   keyword:null},
+  boxing:  {sports:['fight'],    keyword:null},
+  f1:      {sports:['motor-sports'],keyword:['formula 1','f1','grand prix']},
 };
-function guessLeague(title,competition){
-  const text=(title+' '+competition).toLowerCase();
-  for(const[league,kw] of Object.entries(LEAGUE_KEYWORDS)){
-    if(kw.some(k=>text.includes(k)))return league;
-  }
-  return 'other';
-}
+
 async function loadFootball(){
   if(state.footballLoaded)return;
   const grid=document.getElementById('matches-grid');
   grid.innerHTML='<div class="loading-state" style="grid-column:1/-1"><div class="spinner"></div> Loading matches…</div>';
   try{
-    const data=await fetchWithFallback(`${STREAMED_API}/matches/all-sports`);
-    state.allMatches=data||[];state.footballLoaded=true;applyMatchFilters();
-  }catch(_){grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ Failed to load sports data. <button class="retry-btn" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';}
+    // fetch live + today's matches from multiple sport endpoints concurrently
+    const endpoints=['football','basketball','american-football','hockey','tennis','rugby','motor-sports','fight','cricket'];
+    const results=await Promise.allSettled(
+      endpoints.map(sport=>fetchWithFallback(`${STREAMED_API}/matches/${sport}`)
+        .then(data=>(Array.isArray(data)?data:[]).map(m=>({...m,_sport:sport})))
+      )
+    );
+    const all=results.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+    // deduplicate by id
+    const seen=new Set();
+    state.allMatches=all.filter(m=>{if(seen.has(m.id))return false;seen.add(m.id);return true;});
+    state.footballLoaded=true;
+    applyMatchFilters();
+  }catch(err){
+    grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ Could not load sports. <button class="retry-btn" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
+  }
 }
+
 function applyMatchFilters(){
+  const filter=LEAGUE_MAP[state.leagueFilter]||LEAGUE_MAP.all;
   let matches=state.allMatches;
-  if(state.leagueFilter!=='all'){matches=matches.filter(m=>{const l=guessLeague(m.title||'',m.competition||'');return l===state.leagueFilter;});}
-  if(state.matchQuery){const q=state.matchQuery;matches=matches.filter(m=>((m.title||'')+(m.competition||'')+(m.teams?.map(t=>t.name).join(' ')||'')).toLowerCase().includes(q));}
+  // filter by sport
+  if(state.leagueFilter!=='all'){
+    matches=matches.filter(m=>filter.sports.includes(m._sport||m.category||''));
+    // further filter by keyword if needed
+    if(filter.keyword){
+      matches=matches.filter(m=>{
+        const text=((m.title||'')+(m.competition||'')+(m.category||'')).toLowerCase();
+        return filter.keyword.some(k=>text.includes(k));
+      });
+      // if keyword filter yields nothing, fall back to sport-only
+      if(!matches.length){
+        matches=state.allMatches.filter(m=>filter.sports.includes(m._sport||m.category||''));
+      }
+    }
+  }
+  // search query
+  if(state.matchQuery){
+    const q=state.matchQuery.toLowerCase();
+    matches=matches.filter(m=>{
+      const home=m.teams?.home?.name||'';
+      const away=m.teams?.away?.name||'';
+      return ((m.title||'')+(m.competition||'')+home+away).toLowerCase().includes(q);
+    });
+  }
   renderMatches(matches);
 }
+
 function renderMatches(matches){
   const grid=document.getElementById('matches-grid');
   const countEl=document.getElementById('match-count');
-  if(countEl)countEl.textContent=matches.length?`${matches.length} matches`:'';
-  if(!matches.length){grid.innerHTML='<div class="error-state" style="grid-column:1/-1">No matches found for this filter.</div>';return;}
+  if(countEl)countEl.textContent=matches.length?`${matches.length} match${matches.length!==1?'es':''}` :'';
+  if(!matches.length){
+    grid.innerHTML='<div class="error-state" style="grid-column:1/-1;padding:60px 24px;color:#555">No matches right now for this filter.<br><span style="font-size:12px;margin-top:8px;display:block">Try "All Sports" or check back later</span></div>';
+    return;
+  }
   grid.innerHTML='';
   const frag=document.createDocumentFragment();
-  matches.slice(0,60).forEach((match,idx)=>{
-    const card=document.createElement('div');card.className='match-card';card.style.animationDelay=`${idx*30}ms`;
-    const isLive=match.status?.toLowerCase().includes('live')||match.isLive||match.status==='LIVE';
-    const teams=match.teams||[{name:match.title||'Home'},{name:'Away'}];
-    const t1=teams[0]||{};const t2=teams[1]||{};
-    const matchKey=`match-${idx}`;
+  matches.slice(0,80).forEach((match,idx)=>{
+    const card=document.createElement('div');card.className='match-card';
+    card.style.animationDelay=`${Math.min(idx,20)*30}ms`;
+    const isLive=!!(match.status?.toLowerCase().includes('live')||match.isLive);
+    // teams — API uses match.teams.home / match.teams.away
+    const home=match.teams?.home||{name:match.title||'Home Team'};
+    const away=match.teams?.away||{name:'Away Team'};
+    const matchKey=`match-${match.id||idx}`;
     matchMap.set(matchKey,match);
+    const sportIcon={'football':'⚽','basketball':'🏀','american-football':'🏈','hockey':'🏒','tennis':'🎾','rugby':'🏉','motor-sports':'🏎️','fight':'🥊','cricket':'🏏'}[match._sport]||'🏆';
     card.innerHTML=`
       <div class="match-league">
-        ${isLive?'<span class="live-dot"></span><span class="live-badge">LIVE</span>':''} 
-        ${esc(match.competition||match.category||'Sports')}
+        ${isLive?'<span class="live-dot"></span><span class="live-badge">LIVE</span>':''}
+        <span>${sportIcon} ${esc(match.competition||match.category||match._sport||'Sports')}</span>
       </div>
       <div class="match-teams">
         <div class="match-team">
-          <div class="team-badge">${t1.badge?`<img src="${esc(t1.badge)}" onerror="this.style.display='none'">`:'⚽'}</div>
-          <div class="team-name">${esc(t1.name||'Home')}</div>
+          <div class="team-badge">${home.badge?`<img src="${esc(home.badge)}" onerror="this.style.display='none'">`:sportIcon}</div>
+          <div class="team-name">${esc(home.name)}</div>
         </div>
         <div class="match-score-wrap">
-          <div class="vs-text">VS</div>
-          <div class="match-time${isLive?' live':''}">${isLive?'● LIVE':esc(match.time||match.date||'TBD')}</div>
+          <div class="vs-text">${(match.score?.home!=null&&match.score?.away!=null)?`${match.score.home}–${match.score.away}`:'VS'}</div>
+          <div class="match-time${isLive?' live':''}">${isLive?'● LIVE':esc(match.time||formatMatchDate(match.date)||'TBD')}</div>
         </div>
         <div class="match-team">
-          <div class="team-badge">${t2.badge?`<img src="${esc(t2.badge)}" onerror="this.style.display='none'">`:'⚽'}</div>
-          <div class="team-name">${esc(t2.name||'Away')}</div>
+          <div class="team-badge">${away.badge?`<img src="${esc(away.badge)}" onerror="this.style.display='none'">`:sportIcon}</div>
+          <div class="team-name">${esc(away.name)}</div>
         </div>
       </div>
       <div class="match-footer">
-        <span class="stream-count">${(match.sources||[]).length||1} stream${(match.sources||[]).length!==1?'s':''}</span>
-        <button class="watch-btn" data-key="${matchKey}">
+        <span class="stream-count">${(match.sources||[]).length||0} stream${(match.sources||[]).length!==1?'s':''}</span>
+        <button class="watch-btn${!(match.sources&&match.sources.length)?' disabled':''}" data-key="${matchKey}" ${!(match.sources&&match.sources.length)?'disabled':''}>
           <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          Watch
+          ${isLive?'Watch Live':'Watch'}
         </button>
       </div>`;
-    card.querySelector('.watch-btn').addEventListener('click',e=>{e.stopPropagation();playMatch(matchKey);});
-    card.addEventListener('click',()=>playMatch(matchKey));
+    if(match.sources&&match.sources.length){
+      card.querySelector('.watch-btn').addEventListener('click',e=>{e.stopPropagation();playMatch(matchKey);});
+      card.addEventListener('click',()=>playMatch(matchKey));
+    }
     frag.appendChild(card);
   });
   grid.appendChild(frag);
 }
+
+function formatMatchDate(dateStr){
+  if(!dateStr)return '';
+  try{
+    const d=new Date(typeof dateStr==='number'?dateStr*1000:dateStr);
+    if(isNaN(d))return String(dateStr);
+    return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  }catch(_){return String(dateStr);}
+}
+
 async function playMatch(matchKey){
   const match=matchMap.get(matchKey);if(!match)return;
-  const sources=match.sources||match.streams||[];
+  const sources=match.sources||[];
   if(!sources.length){showToast('No streams available for this match');return;}
-  // try each source until we find a usable URL
-  let streamUrl='';
-  for(const src of sources){
-    const candidate=src.url||src.hls||src.embedUrl||src.source||(typeof src==='string'?src:'');
-    if(candidate){streamUrl=candidate;break;}
-  }
-  if(!streamUrl){showToast('No stream URL found');return;}
-  state.currentMedia={type:'football',id:matchKey,title:match.title||'Match',source:streamUrl};
+
   document.getElementById('player-title').textContent=match.title||'Live Match';
-  document.getElementById('player-subtitle').textContent=match.competition||match.category||'Live Sports';
+  document.getElementById('player-subtitle').textContent='Loading stream…';
   document.getElementById('episode-selector-wrap').style.display='none';
-  // build source switcher with all available streams
+  state.currentMedia={type:'football',id:matchKey,title:match.title||'Match'};
+
   const sw=document.getElementById('source-switcher');
+  sw.innerHTML='<span class="source-label">Stream</span><span style="font-size:11px;color:#666;margin-left:8px">Loading…</span>';
+  document.getElementById('player-iframe').src='';
+  openPlayer();
+
+  // fetch actual stream embed URLs from the streams API
+  const streamDetails=await Promise.allSettled(
+    sources.map(s=>fetchWithFallback(`${STREAMED_API}/stream/${s.source}/${s.id}`)
+      .then(data=>Array.isArray(data)?data:[data])
+      .then(streams=>streams.map(st=>({...st, _sourceName:s.source, _sourceId:s.id})))
+    )
+  );
+  const allStreams=streamDetails.flatMap(r=>r.status==='fulfilled'?r.value:[])
+    .filter(s=>s&&(s.embedUrl||s.url||s.hls));
+
+  if(!allStreams.length){
+    document.getElementById('player-subtitle').textContent='No playable streams found.';
+    sw.innerHTML='<span class="source-label">Stream</span><span style="font-size:11px;color:#e50914;margin-left:8px">No streams available</span>';
+    return;
+  }
+
+  // build source switcher
   sw.innerHTML='<span class="source-label">Stream</span>';
-  (sources.length?sources:[{url:streamUrl}]).forEach((src,i)=>{
-    const url=src.url||src.hls||src.embedUrl||src.source||(typeof src==='string'?src:'');
+  allStreams.forEach((stream,i)=>{
+    const url=stream.embedUrl||stream.url||stream.hls||'';
     if(!url)return;
+    const label=`${stream._sourceName||'Stream'} ${stream.streamNo||i+1}${stream.hd?' HD':''}${stream.language&&stream.language!=='English'?' ('+stream.language+')':''}`;
     const btn=document.createElement('button');
     btn.className=`src-btn${i===0?' active':''}`;
-    btn.textContent=src.name||src.label||`Stream ${i+1}`;
+    btn.textContent=label;
     btn.addEventListener('click',()=>{
       sw.querySelectorAll('.src-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('player-iframe').src=frameUrl(url);
+      document.getElementById('player-subtitle').textContent=label;
     });
     sw.appendChild(btn);
   });
-  document.getElementById('player-iframe').src=frameUrl(streamUrl);
-  openPlayer();
+
+  const firstUrl=allStreams[0].embedUrl||allStreams[0].url||allStreams[0].hls;
+  document.getElementById('player-iframe').src=frameUrl(firstUrl);
+  document.getElementById('player-subtitle').textContent=`${allStreams.length} stream${allStreams.length!==1?'s':''} available`;
 }
 
 /* ════════════════════════════════════════════════════
@@ -1723,7 +1799,8 @@ function showTab(tab){
   }else if(tab==='football'){
     hero.style.display='none';if(cs)cs.style.display='none';loadFootball();
   }else if(tab==='watchlist'){
-    hero.style.display='none';if(cs)cs.style.display='none';renderWatchlistTab();
+    hero.style.display='none';if(cs)cs.style.display='none';
+    renderWatchlistTab(); // always re-render fresh from localStorage
   }
 }
 
