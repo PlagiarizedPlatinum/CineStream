@@ -440,6 +440,15 @@ main { padding-top: var(--header-h); }
 .genre-row {
   display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; padding: 0 4%;
 }
+@media (max-width: 768px) {
+  .genre-row {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; touch-action: pan-x;
+    padding-bottom: 4px;
+  }
+  .genre-row::-webkit-scrollbar { display: none; }
+  .genre-chip { flex-shrink: 0; }
+}
 .genre-chip {
   font-size: 13px; font-weight: 500; padding: 6px 18px;
   border-radius: 20px; border: 1px solid rgba(255,255,255,.2);
@@ -472,7 +481,7 @@ main { padding-top: var(--header-h); }
 .continue-card-sub { font-size: 10px; color: var(--nf-text-muted); }
 .continue-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,.15); }
 .continue-progress-bar { height: 100%; background: var(--nf-red); }
-.continue-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; display: none; align-items: center; justify-content: center; }
+.continue-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.85); border: 1px solid rgba(255,255,255,.2); color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; display: none; align-items: center; justify-content: center; z-index: 5; }
 .continue-card:hover .continue-remove { display: flex; }
 
 /* ══ LOAD MORE ═══════════════════════════════════════ */
@@ -489,13 +498,17 @@ main { padding-top: var(--header-h); }
 .nf-tab-btns {
   display: flex; gap: 2px; margin-bottom: 20px; padding: 0 4%;
   border-bottom: 2px solid #333;
+  overflow-x: auto; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
 }
+.nf-tab-btns::-webkit-scrollbar { display: none; }
 .nf-tab-btn {
   background: none; border: none; border-bottom: 3px solid transparent;
   color: var(--nf-text-dim); font-size: 14px; font-weight: 500;
   padding: 10px 20px; margin-bottom: -2px;
   transition: color var(--transition), border-color var(--transition);
-  white-space: nowrap;
+  white-space: nowrap; flex-shrink: 0;
 }
 .nf-tab-btn:hover { color: #fff; }
 .nf-tab-btn.active { color: #fff; border-bottom-color: var(--nf-red); font-weight: 700; }
@@ -515,6 +528,8 @@ main { padding-top: var(--header-h); }
   background: #000; border-radius: 4px; overflow: hidden;
   box-shadow: 0 0 60px rgba(0,0,0,.8);
   animation: scaleIn .25s ease;
+  /* Prevent inner touch events from bubbling to close the modal */
+  touch-action: auto;
 }
 .player-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -582,6 +597,7 @@ main { padding-top: var(--header-h); }
 .refresh-btn:hover { color: #fff; border-color: #666; }
 .leagues-bar {
   display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; touch-action: pan-x;
 }
 .leagues-bar::-webkit-scrollbar { display: none; }
 .league-btn {
@@ -747,6 +763,8 @@ main { padding-top: var(--header-h); }
   #toast-container { bottom: 70px; right: 12px; }
   .gate-box { padding: 36px 24px; }
   .hero-dots { bottom: 8%; right: 16px; }
+  /* On touch devices, always show the continue-remove button */
+  .continue-remove { display: flex !important; }
 }
 
 @media (min-width: 769px) and (max-width: 1100px) {
@@ -890,6 +908,12 @@ main { padding-top: var(--header-h); }
           <button class="color-btn" data-color="#c06de8" style="background:#c06de8" title="Purple"></button>
           <button class="color-btn" data-color="#e8884d" style="background:#e8884d" title="Orange"></button>
         </div>
+      </div>
+      <!-- Account section — shown when logged in with an account -->
+      <div id="settings-account-section" style="display:none;border-top:1px solid #2a2a2a;padding-top:16px">
+        <div class="settings-label">Account</div>
+        <div id="settings-account-email" style="font-size:13px;color:#b3b3b3;margin-bottom:12px"></div>
+        <button id="settings-signout-btn" style="background:rgba(229,9,20,.12);border:1px solid rgba(229,9,20,.4);color:#e50914;font-size:13px;font-weight:600;padding:9px 20px;border-radius:4px;width:100%;transition:all .15s;">↩ Sign Out</button>
       </div>
     </div>
     <div class="settings-foot">
@@ -1272,9 +1296,16 @@ function renderContinueSection(){
       ? `<img src="${imgSrc}" alt="${esc(item.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
     const fallbackHtml=`<div class="no-poster wide" style="display:${imgSrc?'none':'flex'};aspect-ratio:16/9">${esc(item.title)}</div>`;
-    card.innerHTML=`${imgHtml}${fallbackHtml}<div class="continue-card-info"><div class="continue-card-title">${esc(item.title)}</div><div class="continue-card-sub">${item.type==='tv'?`S${item.season||1}E${item.episode||1}`:item.year||''}</div></div><div class="continue-progress"><div class="continue-progress-bar" style="width:${item.progress||15}%"></div></div><button class="continue-remove" data-id="${item.id}" data-type="${item.type}">✕</button>`;
-    card.addEventListener('click',e=>{
-      if(e.target.closest('.continue-remove')){e.stopPropagation();removeFromContinue(item.id,item.type);return;}
+    card.innerHTML=`${imgHtml}${fallbackHtml}<div class="continue-card-info"><div class="continue-card-title">${esc(item.title)}</div><div class="continue-card-sub">${item.type==='tv'?`S${item.season||1}E${item.episode||1}`:item.year||''}</div></div><div class="continue-progress"><div class="continue-progress-bar" style="width:${item.progress||15}%"></div></div><button class="continue-remove" data-id="${item.id}" data-type="${item.type}" title="Remove">✕</button>`;
+    // Use the remove button directly — stop propagation so card click doesn't fire
+    const removeBtn=card.querySelector('.continue-remove');
+    removeBtn.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      removeFromContinue(item.id,item.type);
+    });
+    card.addEventListener('click',function(e){
+      // Don't play if the remove button was clicked
+      if(e.target===removeBtn||removeBtn.contains(e.target))return;
       if(item.type==='movie')playMovie(item);else playTV(item);
     });
     frag.appendChild(card);
@@ -1309,14 +1340,21 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 /* ════════════════════════════════════════════════════
    SPORTS PROXY
 ════════════════════════════════════════════════════ */
+// Mirror rotation for sports API — try each in order
+const SPORTS_MIRRORS=['https://streamed.su/api','https://streamed.me/api'];
+function rewriteSportsMirror(apiUrl,mirrorBase){
+  try{const u=new URL(apiUrl);return mirrorBase+u.pathname+u.search;}catch(_){return apiUrl;}
+}
 async function fetchWithFallback(apiUrl){
-  const attempts=[
-    ()=>fetch(`/api/proxy?url=${encodeURIComponent(apiUrl)}`),
-    ()=>fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`),
-    ()=>fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`),
-    ()=>fetch(apiUrl),
-  ];
-  for(const a of attempts){try{const res=await a();if(res.ok)return res.json();}catch(_){}}
+  // 1. Our Vercel proxy (rotates mirrors server-side)
+  try{const res=await fetch(`/api/proxy?url=${encodeURIComponent(apiUrl)}`);if(res.ok){const j=await res.json();if(j&&(!Array.isArray(j)||j.length||j.id))return j;}}catch(_){}
+  // 2. Try mirrors directly (streamed.su, streamed.me) — they allow direct access from some networks
+  for(const mirror of SPORTS_MIRRORS){
+    try{const res=await fetch(rewriteSportsMirror(apiUrl,mirror),{headers:{'Accept':'application/json'}});if(res.ok)return res.json();}catch(_){}
+  }
+  // 3. Public CORS proxies
+  try{const res=await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`);if(res.ok)return res.json();}catch(_){}
+  try{const res=await fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`);if(res.ok)return res.json();}catch(_){}
   throw new Error('All attempts failed');
 }
 
@@ -1721,6 +1759,7 @@ const LEAGUE_MAP={
 
 async function loadFootball(){
   if(state.footballLoaded)return;
+  state.footballLoaded=true; // set early to prevent double-load
   const grid=document.getElementById('matches-grid');
   grid.innerHTML='<div class="loading-state" style="grid-column:1/-1"><div class="spinner"></div> Loading matches…</div>';
   try{
@@ -1735,9 +1774,14 @@ async function loadFootball(){
     // deduplicate by id
     const seen=new Set();
     state.allMatches=all.filter(m=>{if(seen.has(m.id))return false;seen.add(m.id);return true;});
-    state.footballLoaded=true;
+    if(!state.allMatches.length){
+      state.footballLoaded=false; // allow retry
+      grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ No matches found. Sports data may be unavailable right now.<br><button class="retry-btn" style="margin-top:12px" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
+      return;
+    }
     applyMatchFilters();
   }catch(err){
+    state.footballLoaded=false; // allow retry
     grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ Could not load sports. <button class="retry-btn" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
   }
 }
@@ -2113,10 +2157,9 @@ function unlock(token, user) {
   document.getElementById('pw-gate').style.display = 'none';
   document.body.classList.add('authenticated');
   document.body.style.overflow = '';
-  if (window.innerWidth <= 768) {
-    const mn = document.getElementById('mobile-nav');
-    if (mn) mn.style.display = 'flex';
-  }
+  // Always show mobile nav after login
+  const mn = document.getElementById('mobile-nav');
+  if (mn) mn.style.display = 'flex';
   // Show account indicator
   if (!user.isGlobal) {
     const wrap = document.getElementById('account-wrap');
@@ -2127,6 +2170,11 @@ function unlock(token, user) {
     if (label) label.textContent = user.email.split('@')[0];
     const emailEl = document.getElementById('account-dropdown-email');
     if (emailEl) emailEl.textContent = user.email;
+    // Populate settings account section
+    const settingsAcct = document.getElementById('settings-account-section');
+    if (settingsAcct) settingsAcct.style.display = '';
+    const settingsEmail = document.getElementById('settings-account-email');
+    if (settingsEmail) settingsEmail.textContent = user.email;
   } else {
     // Global user — show "Sign In" button in header so they can switch to an account
     const switchBtn = document.getElementById('switch-to-account-btn');
@@ -2206,12 +2254,18 @@ document.getElementById('reg-btn').addEventListener('click', async () => {
 })();
 
 // ── Logout ───────────────────────────────────────────
-document.getElementById('logout-btn').addEventListener('click', async () => {
+async function doLogout() {
   try { await apiPost('/api/auth?action=logout', {}, authToken); } catch(_) {}
-  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
+  try {
+    localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY);
+    // Keep watchlist/settings locally so they aren't lost on re-login
+  } catch(_) {}
   authToken = null; authUser = null;
   location.reload();
-});
+}
+document.getElementById('logout-btn').addEventListener('click', doLogout);
+// Settings modal sign-out button (visible on mobile where header dropdown isn't shown)
+document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
 
 // ── Account dropdown toggle ──────────────────────────
 document.getElementById('account-btn')?.addEventListener('click', e => {
@@ -2293,8 +2347,13 @@ window.saveContinue = function(list) {
 
 // ── Auto-login from stored token ─────────────────────
 (async function autoLogin() {
-  const storedToken = localStorage.getItem(TOKEN_KEY);
-  const storedUser  = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
+  let storedToken, storedUser;
+  try {
+    storedToken = localStorage.getItem(TOKEN_KEY);
+    storedUser  = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
+  } catch(_) {
+    storedToken = null; storedUser = null;
+  }
 
   if (!storedToken || !storedUser) {
     // Show gate
@@ -2307,10 +2366,12 @@ window.saveContinue = function(list) {
   if (storedToken === '__global__') {
     try {
       const res = await fetch('/api/config');
-      const d = await res.json();
-      const HASH = (d.hash||'').toLowerCase().trim();
-      if (!HASH) { clearStoredAuth(); return; }
-      // Global tokens don't expire but we re-validate the hash exists
+      if (res.ok) {
+        const d = await res.json();
+        const HASH = (d.hash||'').toLowerCase().trim();
+        if (!HASH) { clearStoredAuth(); return; }
+      }
+      // Whether fetch succeeded or returned no hash, trust stored token for offline/mobile
       unlock(storedToken, storedUser);
     } catch(_) {
       // Offline — trust the stored token
@@ -2323,7 +2384,7 @@ window.saveContinue = function(list) {
   try {
     const data = await apiGet('/api/auth?action=verify', storedToken);
     if (data.ok) {
-      unlock(storedToken, data.user);
+      unlock(storedToken, data.user || storedUser);
     } else {
       clearStoredAuth();
     }
