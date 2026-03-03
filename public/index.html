@@ -1246,12 +1246,12 @@ function addToContinue(item){
   if(idx>=0)list.splice(idx,1);
   list.unshift(entry);
   if(list.length>20)list.length=20;
-  saveContinue(list);
+  window.saveContinue(list);
   renderContinueSection();
 }
 function removeFromContinue(id,type){
   let list=getContinue().filter(i=>!(String(i.id)===String(id)&&i.type===type));
-  saveContinue(list);
+  window.saveContinue(list);
   renderContinueSection();
 }
 function renderContinueSection(){
@@ -2068,7 +2068,7 @@ function wireEvents(){
 
   // Watchlist / continue
   document.getElementById('clear-watchlist-btn')?.addEventListener('click',()=>{saveWatchlist([]);renderWatchlistTab();showToast('Watchlist cleared');});
-  document.getElementById('clear-continue-btn')?.addEventListener('click',()=>{saveContinue([]);renderContinueSection();showToast('Continue watching cleared');});
+  document.getElementById('clear-continue-btn')?.addEventListener('click',()=>{window.saveContinue([]);renderContinueSection();showToast('Continue watching cleared');});
 
   // Slider arrows
   document.querySelectorAll('.slider-arrow').forEach(arrow=>{
