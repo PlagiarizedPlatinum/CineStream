@@ -440,15 +440,6 @@ main { padding-top: var(--header-h); }
 .genre-row {
   display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; padding: 0 4%;
 }
-@media (max-width: 768px) {
-  .genre-row {
-    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
-    -webkit-overflow-scrolling: touch; touch-action: pan-x;
-    padding-bottom: 4px;
-  }
-  .genre-row::-webkit-scrollbar { display: none; }
-  .genre-chip { flex-shrink: 0; }
-}
 .genre-chip {
   font-size: 13px; font-weight: 500; padding: 6px 18px;
   border-radius: 20px; border: 1px solid rgba(255,255,255,.2);
@@ -481,7 +472,7 @@ main { padding-top: var(--header-h); }
 .continue-card-sub { font-size: 10px; color: var(--nf-text-muted); }
 .continue-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,.15); }
 .continue-progress-bar { height: 100%; background: var(--nf-red); }
-.continue-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.85); border: 1px solid rgba(255,255,255,.2); color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; display: none; align-items: center; justify-content: center; z-index: 5; }
+.continue-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; display: none; align-items: center; justify-content: center; }
 .continue-card:hover .continue-remove { display: flex; }
 
 /* ══ LOAD MORE ═══════════════════════════════════════ */
@@ -498,17 +489,13 @@ main { padding-top: var(--header-h); }
 .nf-tab-btns {
   display: flex; gap: 2px; margin-bottom: 20px; padding: 0 4%;
   border-bottom: 2px solid #333;
-  overflow-x: auto; scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
 }
-.nf-tab-btns::-webkit-scrollbar { display: none; }
 .nf-tab-btn {
   background: none; border: none; border-bottom: 3px solid transparent;
   color: var(--nf-text-dim); font-size: 14px; font-weight: 500;
   padding: 10px 20px; margin-bottom: -2px;
   transition: color var(--transition), border-color var(--transition);
-  white-space: nowrap; flex-shrink: 0;
+  white-space: nowrap;
 }
 .nf-tab-btn:hover { color: #fff; }
 .nf-tab-btn.active { color: #fff; border-bottom-color: var(--nf-red); font-weight: 700; }
@@ -528,8 +515,6 @@ main { padding-top: var(--header-h); }
   background: #000; border-radius: 4px; overflow: hidden;
   box-shadow: 0 0 60px rgba(0,0,0,.8);
   animation: scaleIn .25s ease;
-  /* Prevent inner touch events from bubbling to close the modal */
-  touch-action: auto;
 }
 .player-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -597,7 +582,6 @@ main { padding-top: var(--header-h); }
 .refresh-btn:hover { color: #fff; border-color: #666; }
 .leagues-bar {
   display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px; scrollbar-width: none;
-  -webkit-overflow-scrolling: touch; touch-action: pan-x;
 }
 .leagues-bar::-webkit-scrollbar { display: none; }
 .league-btn {
@@ -763,8 +747,6 @@ main { padding-top: var(--header-h); }
   #toast-container { bottom: 70px; right: 12px; }
   .gate-box { padding: 36px 24px; }
   .hero-dots { bottom: 8%; right: 16px; }
-  /* On touch devices, always show the continue-remove button */
-  .continue-remove { display: flex !important; }
 }
 
 @media (min-width: 769px) and (max-width: 1100px) {
@@ -909,11 +891,10 @@ main { padding-top: var(--header-h); }
           <button class="color-btn" data-color="#e8884d" style="background:#e8884d" title="Orange"></button>
         </div>
       </div>
-      <!-- Account section — shown when logged in with an account -->
       <div id="settings-account-section" style="display:none;border-top:1px solid #2a2a2a;padding-top:16px">
         <div class="settings-label">Account</div>
-        <div id="settings-account-email" style="font-size:13px;color:#b3b3b3;margin-bottom:12px"></div>
-        <button id="settings-signout-btn" style="background:rgba(229,9,20,.12);border:1px solid rgba(229,9,20,.4);color:#e50914;font-size:13px;font-weight:600;padding:9px 20px;border-radius:4px;width:100%;transition:all .15s;">↩ Sign Out</button>
+        <div id="settings-account-email" style="font-size:13px;color:#b3b3b3;margin-bottom:12px;word-break:break-all"></div>
+        <button id="settings-signout-btn" style="background:rgba(229,9,20,.1);border:1px solid rgba(229,9,20,.35);color:#e50914;font-size:13px;font-weight:600;padding:10px 20px;border-radius:4px;width:100%;cursor:pointer;transition:background .15s">↩ Sign Out</button>
       </div>
     </div>
     <div class="settings-foot">
@@ -1264,49 +1245,86 @@ function renderWatchlistTab(){
 function getContinue(){try{return JSON.parse(localStorage.getItem(CONTINUE_KEY)||'[]');}catch(_){return[];}}
 function saveContinue(list){try{localStorage.setItem(CONTINUE_KEY,JSON.stringify(list));}catch(_){}}
 function addToContinue(item){
+  // Normalise: always store poster as the path string (not full URL)
+  const normItem={
+    id:     item.id,
+    type:   item.type,
+    title:  item.title||item.name||'Unknown',
+    poster: item.poster||item.poster_path||null,
+    backdrop: item.backdrop||item.backdrop_path||null,
+    year:   item.year||(item.release_date||'').slice(0,4)||'',
+    season: item.season||null,
+    episode:item.episode||null,
+    progress: item.progress||15,
+    lastWatched: Date.now(),
+  };
   let list=getContinue();
-  const idx=list.findIndex(i=>String(i.id)===String(item.id)&&i.type===item.type);
-  const entry={...item,lastWatched:Date.now()};
+  const idx=list.findIndex(i=>String(i.id)===String(normItem.id)&&i.type===normItem.type);
   if(idx>=0)list.splice(idx,1);
-  list.unshift(entry);
+  list.unshift(normItem);
   if(list.length>20)list.length=20;
   saveContinue(list);
+  // Always push to cloud regardless of patch order
+  if(typeof pushToCloud==='function')pushToCloud('continues',list);
   renderContinueSection();
 }
 function removeFromContinue(id,type){
   let list=getContinue().filter(i=>!(String(i.id)===String(id)&&i.type===type));
   saveContinue(list);
+  if(typeof pushToCloud==='function')pushToCloud('continues',list);
   renderContinueSection();
 }
 function renderContinueSection(){
-  const list=getContinue();const section=document.getElementById('continue-section');const rail=document.getElementById('continue-rail');
+  const list=getContinue();
+  const section=document.getElementById('continue-section');
+  const rail=document.getElementById('continue-rail');
+  if(!section||!rail)return;
   if(!list.length){section.style.display='none';return;}
   section.style.display='';
   rail.innerHTML='';
   const frag=document.createDocumentFragment();
   list.forEach(item=>{
-    const card=document.createElement('div');card.className='continue-card';
-    // prefer backdrop for wide card, fall back to poster, then show title text
-    const imgSrc=item.backdrop
-      ? IMG_BASE+'w500'+item.backdrop
-      : item.poster
-        ? IMG_BASE+'w342'+item.poster
-        : '';
-    const imgHtml=imgSrc
-      ? `<img src="${imgSrc}" alt="${esc(item.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    const card=document.createElement('div');
+    card.className='continue-card';
+    // poster/backdrop are stored as TMDB paths e.g. "/abc123.jpg"
+    const backdropPath = item.backdrop || item.backdrop_path || null;
+    const posterPath   = item.poster   || item.poster_path   || null;
+    const imgPath = backdropPath || posterPath;
+    const imgSrc  = imgPath ? IMG_BASE+'w500'+imgPath : '';
+    const imgHtml = imgSrc
+      ? `<img src="${imgSrc}" alt="${esc(item.title)}" loading="lazy" onerror="this.parentNode.querySelector('.cw-fallback').style.display='flex';this.style.display='none'">`
       : '';
-    const fallbackHtml=`<div class="no-poster wide" style="display:${imgSrc?'none':'flex'};aspect-ratio:16/9">${esc(item.title)}</div>`;
-    card.innerHTML=`${imgHtml}${fallbackHtml}<div class="continue-card-info"><div class="continue-card-title">${esc(item.title)}</div><div class="continue-card-sub">${item.type==='tv'?`S${item.season||1}E${item.episode||1}`:item.year||''}</div></div><div class="continue-progress"><div class="continue-progress-bar" style="width:${item.progress||15}%"></div></div><button class="continue-remove" data-id="${item.id}" data-type="${item.type}" title="Remove">✕</button>`;
-    // Use the remove button directly — stop propagation so card click doesn't fire
-    const removeBtn=card.querySelector('.continue-remove');
-    removeBtn.addEventListener('click',function(e){
-      e.preventDefault();e.stopPropagation();
-      removeFromContinue(item.id,item.type);
+    const sub = item.type==='tv' ? `S${item.season||1}E${item.episode||1}` : (item.year||'');
+    card.innerHTML=`
+      ${imgHtml}
+      <div class="cw-fallback no-poster wide" style="display:${imgSrc?'none':'flex'};aspect-ratio:16/9">${esc(item.title)}</div>
+      <div class="continue-card-info">
+        <div class="continue-card-title">${esc(item.title)}</div>
+        <div class="continue-card-sub">${esc(sub)}</div>
+      </div>
+      <div class="continue-progress"><div class="continue-progress-bar" style="width:${item.progress||15}%"></div></div>
+      <button class="continue-remove" title="Remove">✕</button>`;
+    // Wire remove button — stop propagation so card click doesn't fire too
+    card.querySelector('.continue-remove').addEventListener('click', function(e){
+      e.preventDefault(); e.stopPropagation();
+      removeFromContinue(item.id, item.type);
     });
-    card.addEventListener('click',function(e){
-      // Don't play if the remove button was clicked
-      if(e.target===removeBtn||removeBtn.contains(e.target))return;
-      if(item.type==='movie')playMovie(item);else playTV(item);
+    // Card click — play the item
+    card.addEventListener('click', function(){
+      if(item.type==='movie') playMovie({
+        id: item.id,
+        title: item.title,
+        poster_path: item.poster || null,
+        backdrop_path: item.backdrop || null,
+        release_date: item.year || '',
+      });
+      else playTV({
+        id: item.id,
+        name: item.title,
+        poster_path: item.poster || null,
+        season: item.season || 1,
+        episode: item.episode || 1,
+      });
     });
     frag.appendChild(card);
   });
@@ -1340,22 +1358,54 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 /* ════════════════════════════════════════════════════
    SPORTS PROXY
 ════════════════════════════════════════════════════ */
-// Mirror rotation for sports API — try each in order
-const SPORTS_MIRRORS=['https://streamed.su/api','https://streamed.me/api'];
-function rewriteSportsMirror(apiUrl,mirrorBase){
-  try{const u=new URL(apiUrl);return mirrorBase+u.pathname+u.search;}catch(_){return apiUrl;}
-}
-async function fetchWithFallback(apiUrl){
-  // 1. Our Vercel proxy (rotates mirrors server-side)
-  try{const res=await fetch(`/api/proxy?url=${encodeURIComponent(apiUrl)}`);if(res.ok){const j=await res.json();if(j&&(!Array.isArray(j)||j.length||j.id))return j;}}catch(_){}
-  // 2. Try mirrors directly (streamed.su, streamed.me) — they allow direct access from some networks
-  for(const mirror of SPORTS_MIRRORS){
-    try{const res=await fetch(rewriteSportsMirror(apiUrl,mirror),{headers:{'Accept':'application/json'}});if(res.ok)return res.json();}catch(_){}
+// All known working API bases for the same data — tried in order
+const SPORTS_API_BASES = [
+  'https://streamed.su/api',
+  'https://streamed.me/api',
+  'https://streamed.pk/api',
+];
+
+async function fetchSportsUrl(path){
+  // 1. Try our Vercel edge proxy first (it rotates mirrors server-side)
+  const primaryBase = SPORTS_API_BASES[0];
+  const primaryUrl  = primaryBase + path;
+  try{
+    const r = await fetch(`/api/proxy?url=${encodeURIComponent(primaryUrl)}`,{signal:AbortSignal.timeout(6000)});
+    if(r.ok){const j=await r.json();if(Array.isArray(j)||j?.id)return j;}
+  }catch(_){}
+
+  // 2. Try each API base directly (browser → server, works if not CORS-blocked)
+  for(const base of SPORTS_API_BASES){
+    try{
+      const r=await fetch(base+path,{headers:{'Accept':'application/json'},signal:AbortSignal.timeout(5000)});
+      if(r.ok)return r.json();
+    }catch(_){}
   }
-  // 3. Public CORS proxies
-  try{const res=await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`);if(res.ok)return res.json();}catch(_){}
-  try{const res=await fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`);if(res.ok)return res.json();}catch(_){}
-  throw new Error('All attempts failed');
+
+  // 3. Public CORS proxies as last resort
+  const encodedUrl = encodeURIComponent(primaryUrl);
+  for(const proxy of [
+    `https://api.allorigins.win/raw?url=${encodedUrl}`,
+    `https://corsproxy.io/?${encodedUrl}`,
+    `https://thingproxy.freeboard.io/fetch/${primaryUrl}`,
+  ]){
+    try{
+      const r=await fetch(proxy,{signal:AbortSignal.timeout(8000)});
+      if(r.ok)return r.json();
+    }catch(_){}
+  }
+  throw new Error('All sources failed for '+path);
+}
+
+// Keep old name for stream-fetching (used by playMatch)
+async function fetchWithFallback(apiUrl){
+  // Extract just the path from the full URL
+  try{
+    const u=new URL(apiUrl);
+    return fetchSportsUrl(u.pathname+u.search);
+  }catch(_){
+    return fetchSportsUrl(apiUrl);
+  }
 }
 
 /* ════════════════════════════════════════════════════
@@ -1759,30 +1809,28 @@ const LEAGUE_MAP={
 
 async function loadFootball(){
   if(state.footballLoaded)return;
-  state.footballLoaded=true; // set early to prevent double-load
+  state.footballLoaded=true;
   const grid=document.getElementById('matches-grid');
   grid.innerHTML='<div class="loading-state" style="grid-column:1/-1"><div class="spinner"></div> Loading matches…</div>';
   try{
-    // fetch live + today's matches from multiple sport endpoints concurrently
     const endpoints=['football','basketball','american-football','hockey','tennis','rugby','motor-sports','fight','cricket'];
     const results=await Promise.allSettled(
-      endpoints.map(sport=>fetchWithFallback(`${STREAMED_API}/matches/${sport}`)
+      endpoints.map(sport=>fetchSportsUrl(`/matches/${sport}`)
         .then(data=>(Array.isArray(data)?data:[]).map(m=>({...m,_sport:sport})))
       )
     );
     const all=results.flatMap(r=>r.status==='fulfilled'?r.value:[]);
-    // deduplicate by id
     const seen=new Set();
     state.allMatches=all.filter(m=>{if(seen.has(m.id))return false;seen.add(m.id);return true;});
     if(!state.allMatches.length){
-      state.footballLoaded=false; // allow retry
-      grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ No matches found. Sports data may be unavailable right now.<br><button class="retry-btn" style="margin-top:12px" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
+      state.footballLoaded=false;
+      grid.innerHTML='<div class="error-state" style="grid-column:1/-1">No matches found right now.<br><button class="retry-btn" style="margin-top:12px" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
       return;
     }
     applyMatchFilters();
   }catch(err){
-    state.footballLoaded=false; // allow retry
-    grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ Could not load sports. <button class="retry-btn" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
+    state.footballLoaded=false;
+    grid.innerHTML='<div class="error-state" style="grid-column:1/-1">⚠️ Could not load sports data.<br><button class="retry-btn" style="margin-top:12px" onclick="state.footballLoaded=false;loadFootball()">Retry</button></div>';
   }
 }
 
@@ -2022,6 +2070,10 @@ function wireEvents(){
   document.getElementById('settings-reset')?.addEventListener('click',()=>{
     try{localStorage.removeItem(SETTINGS_KEY);}catch(_){}state.settings={source:'vidsrc',accent:'#e50914'};loadSettings();showToast('Settings reset');
   });
+  document.getElementById('settings-signout-btn')?.addEventListener('click',()=>{
+    document.getElementById('settings-modal').classList.remove('active');
+    document.getElementById('logout-btn').click();
+  });
 
   // Movie tabs
   document.querySelectorAll('[data-movie-type]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -2157,9 +2209,15 @@ function unlock(token, user) {
   document.getElementById('pw-gate').style.display = 'none';
   document.body.classList.add('authenticated');
   document.body.style.overflow = '';
-  // Always show mobile nav after login
-  const mn = document.getElementById('mobile-nav');
-  if (mn) mn.style.display = 'flex';
+  // Mobile nav — CSS handles this via @media, but we explicitly set it here
+  // only for mobile so the JS override doesn't break the desktop CSS rule
+  if (window.innerWidth <= 768) {
+    const mn = document.getElementById('mobile-nav');
+    if (mn) mn.style.display = 'flex';
+  } else {
+    const mn = document.getElementById('mobile-nav');
+    if (mn) mn.style.removeProperty('display'); // let CSS decide
+  }
   // Show account indicator
   if (!user.isGlobal) {
     const wrap = document.getElementById('account-wrap');
@@ -2170,7 +2228,7 @@ function unlock(token, user) {
     if (label) label.textContent = user.email.split('@')[0];
     const emailEl = document.getElementById('account-dropdown-email');
     if (emailEl) emailEl.textContent = user.email;
-    // Populate settings account section
+    // Settings modal account section (visible on mobile)
     const settingsAcct = document.getElementById('settings-account-section');
     if (settingsAcct) settingsAcct.style.display = '';
     const settingsEmail = document.getElementById('settings-account-email');
@@ -2254,18 +2312,12 @@ document.getElementById('reg-btn').addEventListener('click', async () => {
 })();
 
 // ── Logout ───────────────────────────────────────────
-async function doLogout() {
+document.getElementById('logout-btn').addEventListener('click', async () => {
   try { await apiPost('/api/auth?action=logout', {}, authToken); } catch(_) {}
-  try {
-    localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY);
-    // Keep watchlist/settings locally so they aren't lost on re-login
-  } catch(_) {}
+  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
   authToken = null; authUser = null;
   location.reload();
-}
-document.getElementById('logout-btn').addEventListener('click', doLogout);
-// Settings modal sign-out button (visible on mobile where header dropdown isn't shown)
-document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
+});
 
 // ── Account dropdown toggle ──────────────────────────
 document.getElementById('account-btn')?.addEventListener('click', e => {
@@ -2347,13 +2399,8 @@ window.saveContinue = function(list) {
 
 // ── Auto-login from stored token ─────────────────────
 (async function autoLogin() {
-  let storedToken, storedUser;
-  try {
-    storedToken = localStorage.getItem(TOKEN_KEY);
-    storedUser  = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
-  } catch(_) {
-    storedToken = null; storedUser = null;
-  }
+  const storedToken = localStorage.getItem(TOKEN_KEY);
+  const storedUser  = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
 
   if (!storedToken || !storedUser) {
     // Show gate
@@ -2366,12 +2413,10 @@ window.saveContinue = function(list) {
   if (storedToken === '__global__') {
     try {
       const res = await fetch('/api/config');
-      if (res.ok) {
-        const d = await res.json();
-        const HASH = (d.hash||'').toLowerCase().trim();
-        if (!HASH) { clearStoredAuth(); return; }
-      }
-      // Whether fetch succeeded or returned no hash, trust stored token for offline/mobile
+      const d = await res.json();
+      const HASH = (d.hash||'').toLowerCase().trim();
+      if (!HASH) { clearStoredAuth(); return; }
+      // Global tokens don't expire but we re-validate the hash exists
       unlock(storedToken, storedUser);
     } catch(_) {
       // Offline — trust the stored token
@@ -2384,7 +2429,7 @@ window.saveContinue = function(list) {
   try {
     const data = await apiGet('/api/auth?action=verify', storedToken);
     if (data.ok) {
-      unlock(storedToken, data.user || storedUser);
+      unlock(storedToken, data.user);
     } else {
       clearStoredAuth();
     }
