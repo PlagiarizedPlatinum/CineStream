@@ -13,9 +13,9 @@
 
 'use strict';
 
-const SW_VERSION   = 'rw-v10';
+const SW_VERSION   = 'rw-v6';
 const SELF_ORIGIN  = self.location.origin;
-const BLOCK_CACHE  = 'rw-blocked-v10';
+const BLOCK_CACHE  = 'rw-blocked-v6';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MEGA BLOCKED HOSTNAME SET
@@ -157,7 +157,7 @@ const BLOCKED = new Set([
    redirect chains, click trackers, and URL-hijack services.
 ═══════════════════════════════════════════════════════════════════════════ */
 const BLOCK_URL_PATTERNS = [
-  // (removed: was matching /api/frame?url= and /api/proxy?url= — our own routes)
+  /[?&](redirect|goto|url|link|src|ref|out|click|track)=[^&]*(https?|www\.)/i,
   /\/go\/https?:\/\//i,
   /\/out\/https?:\/\//i,
   /\/redirect\/https?:\/\//i,
@@ -215,14 +215,47 @@ function silentBlockJs() {
   });
 }
 
+function blockedNavPage(blockedUrl) {
+  let hostname = '';
+  try { hostname = new URL(blockedUrl).hostname; } catch (_) { hostname = blockedUrl; }
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Blocked</title>
+<script>
+(function(){
+  // Try to go back, fall back to home
+  try {
+    if (window.history.length > 1) { window.history.back(); }
+    else { window.location.replace('/'); }
+  } catch(e) { window.location.replace('/'); }
+  // Also post a message to parent so the app knows
+  try { window.parent.postMessage({ type: 'RW_NAV_BLOCKED', hostname: '${hostname.replace(/'/g,"\\'")}' }, '*'); } catch(_) {}
+  // Hard redirect to home after 400ms if back() didn't work
+  setTimeout(function(){ try { window.location.replace('/'); } catch(_){} }, 400);
+})();
+<\/script>
+</head>
+<body style="background:#07090d;color:#e8c96d;font-family:sans-serif;display:flex;
+align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:12px">
+<div style="font-size:32px">&#x1F6E1;</div>
+<div style="font-size:14px;letter-spacing:2px">AD REDIRECT BLOCKED</div>
+<div style="font-size:11px;color:#5a6478">${hostname}</div>
+</body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-RW-Shield': 'nav-blocked',
+    },
+  });
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LIFECYCLE
 ═══════════════════════════════════════════════════════════════════════════ */
 self.addEventListener('install', () => {
-  // Do NOT call skipWaiting() here automatically.
-  // Doing so causes clients.claim() to fire mid-page-load, interrupting in-flight
-  // fetches and crashing the page. The page controls when to activate via postMessage.
+  // Skip waiting immediately — no old SW delay
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
@@ -274,34 +307,17 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // ─── RULE 3: Block external TOP-LEVEL tab navigations only ───────────
-  // IMPORTANT: dest==='document' fires for both top-level tab navigations AND
-  // navigations inside iframes (e.g. embed providers redirect through several
-  // hostnames before landing on their player). We must NOT block those iframe
-  // redirects or the embed breaks with 5 refreshes then 403.
-  // We distinguish them by checking the Referer header:
-  //   - Referer is our own origin  → top-level page navigating away → BLOCK if external
-  //   - Referer is a foreign origin → iframe redirect chain          → PASS THROUGH
-  //   - No Referer                  → user typed / bookmark          → BLOCK if external
+  // ─── RULE 3: Block ALL external top-level navigations ─────────────────
+  // SPA rule: this tab must NEVER navigate away from our origin.
+  // Any top-frame navigation to another origin = ad redirect. Kill it.
   if (mode === 'navigate' && dest === 'document') {
-    const isSameOrigin = origin === SELF_ORIGIN
-      || url.startsWith(SELF_ORIGIN + '/')
-      || url.startsWith(SELF_ORIGIN + '?')
-      || url === SELF_ORIGIN;
-    if (!isSameOrigin) {
-      const referer  = req.headers.get('Referer') || '';
-      const refIsSelf = !referer || referer.startsWith(SELF_ORIGIN);
-      // Foreign referer = iframe redirect chain — let it pass
-      if (!refIsSelf) return;
-      console.warn('[SW v9] BLOCKED top-level nav →', url);
-      e.respondWith(new Response(
-        '<html><body><script>try{history.back();}catch(e){}<\/script></body></html>',
-        { status: 200, headers: {'Content-Type':'text/html','Cache-Control':'no-store','X-RW-Shield':'nav-blocked'} }
-      ));
+    if (origin !== SELF_ORIGIN) {
+      console.warn('[SW v6] BLOCKED top-level nav →', url);
+      e.respondWith(blockedNavPage(url));
       notifyBlocked(hostname, 'navigation');
       return;
     }
-    return; // Same-origin navigation: pass through unconditionally
+    return; // Same-origin navigation: fine
   }
 
   // ─── RULE 4: Block ad iframes / sub-frames ────────────────────────────

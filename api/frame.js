@@ -109,15 +109,6 @@ const ALLOWED_EMBED_HOSTS = [
   'vidlink.pro','www.vidlink.pro',
   '2embed.cc','www.2embed.cc','2embed.to','2embed.org','2embed.stream','www.2embed.stream',
   'streamed.su','streamed.pk','streamed.me',
-  'embedme.top','www.embedme.top',
-  'dlhd.sx','www.dlhd.sx',
-  'sportshd.me','www.sportshd.me',
-  'sportsurge.net','www.sportsurge.net',
-  'cricfree.sc','www.cricfree.sc',
-  'feed.streamed.su','feed.streamed.pk',
-  'alphasonline.com','alphasonline.net',
-  'hdtoday.tv','hdtoday.cc',
-  'livesport.ws','www.livesport.ws',
   'smashystream.com','smashystream.xyz','smashystream.to','player.smashy.stream',
   'moviesapi.club','moviesapi.com',
   'closeload.com','closeload.net',
@@ -239,7 +230,7 @@ window.setInterval=function(fn,d,...a){if(typeof fn==='string'&&BAD_KW.some(b=>f
    any external navigation it tries to perform. */
 const _aEL=EventTarget.prototype.addEventListener;
 const _rEL=EventTarget.prototype.removeEventListener;
-const AD_EVTS=new Set(['mousedown','pointerdown','touchstart','touchend','click']);
+const AD_EVTS=new Set(['mousedown','pointerdown','touchstart','touchend','click','focus','blur','visibilitychange']);
 const _wm=new WeakMap();
 function wrapFn(type,fn){
   if(typeof fn!=='function'||!AD_EVTS.has(type))return fn;
@@ -309,11 +300,11 @@ document.addEventListener('click',function(e){
   }catch(_){}
 },true);
 
-/* 13. beforeunload / blur / pagehide — NOTE: we do NOT block these on the
-   frame window itself. Blocking beforeunload here propagates up to the parent
-   page and causes the browser to show "Leave page?" dialogs or trigger reload
-   loops when the user clicks a movie. We only block them on the INNER embed
-   iframe (handled in the load event below). */
+/* 13. beforeunload / blur / pagehide traps */
+window.addEventListener('beforeunload',function(e){e.preventDefault();e.returnValue='';return '';},true);
+window.addEventListener('blur',function(e){e.stopImmediatePropagation();},true);
+window.addEventListener('pagehide',function(e){e.stopImmediatePropagation();},true);
+try{Object.defineProperty(window,'onbeforeunload',{set(v){if(typeof v==='string')return;},get:()=>null,configurable:false});}catch(_){}
 
 /* 14. Notifications / Push */
 try{
@@ -449,7 +440,7 @@ function nuke(n){if(n&&n.parentNode){n.remove();report('mo-nuke',(n.id||n.classN
 function chkOverlay(n){
   try{
     const cs=window.getComputedStyle(n),zi=parseInt(cs.zIndex||0,10),pos=cs.position;
-    if((pos==='fixed'||pos==='absolute')&&zi>2147483000){
+    if((pos==='fixed'||pos==='absolute')&&zi>8000){
       const w=parseFloat(cs.width),h=parseFloat(cs.height);
       if(w>window.innerWidth*0.25||h>window.innerHeight*0.25)nuke(n);
     }
@@ -475,10 +466,7 @@ Element.prototype.attachShadow=function(init){
   return root;
 };
 
-/* 32. Periodic sweep every 4s
-   NOTE: z-index threshold raised to 2147483600 (near INT_MAX) so we only nuke
-   true full-page ad takeovers, NOT the embed player's own overlay UI which
-   legitimately uses high z-indexes for controls/modals inside the player. */
+/* 32. Periodic sweep every 4s */
 const AD_SEL=[
   '.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
   '[class*="popunder"]','[class*="clickunder"]','[id*="popunder"]',
@@ -501,7 +489,7 @@ function sweep(){
   try{document.querySelectorAll('div,span,section,aside,article,iframe').forEach(el=>{
     if(el.id==='embed')return;
     try{const cs=window.getComputedStyle(el),zi=parseInt(cs.zIndex||0,10),pos=cs.position;
-    if((pos==='fixed'||pos==='absolute')&&zi>2147483000){const w=parseFloat(cs.width),h=parseFloat(cs.height);if(w>window.innerWidth*0.25||h>window.innerHeight*0.25)el.remove();}}catch(_){}
+    if((pos==='fixed'||pos==='absolute')&&zi>8000){const w=parseFloat(cs.width),h=parseFloat(cs.height);if(w>window.innerWidth*0.25||h>window.innerHeight*0.25)el.remove();}}catch(_){}
   });}catch(_){}
 }
 [100,300,700,1200,2000,3500,6000].forEach(t=>setTimeout(sweep,t));
@@ -546,7 +534,7 @@ console.log('[RW-FRAME] Shield v8 ABSOLUTE NUKE active — 33 vectors');
   const frame=document.getElementById('embed');
   if(!frame)return;
   frame.addEventListener('load',function(){
-    try{const cw=frame.contentWindow;if(cw)cw.eval('(function(){try{window.open=()=>null;Object.defineProperty(window,"open",{value:()=>null,writable:false,configurable:false});}catch(_){}try{Object.defineProperty(window,"opener",{get:()=>null,set:()=>{},configurable:false});}catch(_){}window.addEventListener("beforeunload",e=>{e.preventDefault();e.returnValue="";return "";},true);}catch(_){}})()');
+    try{const cw=frame.contentWindow;if(cw)cw.eval('(function(){try{window.open=()=>null;Object.defineProperty(window,"open",{value:()=>null,writable:false,configurable:false});}catch(_){}try{Object.defineProperty(window,"opener",{get:()=>null,set:()=>{},configurable:false});}catch(_){}window.addEventListener("blur",e=>e.stopImmediatePropagation(),true);window.addEventListener("beforeunload",e=>{e.preventDefault();e.returnValue="";return "";},true);}catch(_){}})()');
     }catch(_){}
   });
   window.addEventListener('message',function(e){
@@ -561,21 +549,21 @@ console.log('[RW-FRAME] Shield v8 ABSOLUTE NUKE active — 33 vectors');
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'X-Frame-Options': 'SAMEORIGIN',
       'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'X-Frame-Options': 'SAMEORIGIN',
       'X-Content-Type-Options': 'nosniff',
       'X-Permitted-Cross-Domain-Policies': 'none',
       'Referrer-Policy': 'no-referrer-when-downgrade',
       'Permissions-Policy': [
         'geolocation=()', 'microphone=()', 'camera=()', 'payment=()',
-        'usb=()', 'display-capture=()', 'gamepad=()',
-        'magnetometer=()', 'midi=()',
-        'publickey-credentials-get=()',
-        'screen-wake-lock=()', 'serial=()',
-        'xr-spatial-tracking=()',
-        'encrypted-media=*', 'fullscreen=*',
-        'gyroscope=*', 'accelerometer=*', 'autoplay=*',
-        'picture-in-picture=*',
+        'usb=()', 'notifications=()', 'push=()', 'interest-cohort=()',
+        'browsing-topics=()', 'ambient-light-sensor=()', 'battery=()',
+        'display-capture=()', 'document-domain=()',
+        'encrypted-media=*', 'fullscreen=*', 'gamepad=()',
+        'gyroscope=*', 'magnetometer=()', 'midi=()',
+        'picture-in-picture=*', 'publickey-credentials-get=()',
+        'screen-wake-lock=()', 'serial=()', 'sync-xhr=(self)',
+        'xr-spatial-tracking=()', 'accelerometer=*', 'autoplay=*',
       ].join(', '),
       'Content-Security-Policy': [
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob: data:",

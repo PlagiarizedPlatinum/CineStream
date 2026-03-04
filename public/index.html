@@ -12,33 +12,22 @@
   if(!('serviceWorker' in navigator)){return;}
   navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'})
     .then(function(reg){
-      // Only activate a waiting SW after the page is fully idle.
-      // Early activation (mid-load) causes clients.claim() to interrupt in-flight
-      // fetches, which crashes the page with ERR_FAILED / crbug/1173575.
-      function activateWaiting(sw){
-        function doActivate(){ sw.postMessage('SKIP_WAITING'); }
-        if(document.readyState==='complete'){
-          // Already loaded — wait one extra tick so any pending microtasks settle
-          setTimeout(doActivate, 100);
-        } else {
-          window.addEventListener('load', function(){ setTimeout(doActivate, 100); }, {once:true});
-        }
-      }
-      if(reg.waiting) activateWaiting(reg.waiting);
-      reg.addEventListener('updatefound', function(){
-        var sw = reg.installing; if(!sw) return;
-        sw.addEventListener('statechange', function(){
-          if(sw.state === 'installed') activateWaiting(sw);
-        });
+      reg.update();
+      function activateWaiting(sw){sw.postMessage('SKIP_WAITING');}
+      if(reg.waiting)activateWaiting(reg.waiting);
+      reg.addEventListener('updatefound',function(){
+        var sw=reg.installing;if(!sw)return;
+        sw.addEventListener('statechange',function(){if(sw.state==='installed')activateWaiting(sw);});
       });
     }).catch(function(){});
-  // DO NOT add controllerchange→reload here — it causes infinite refresh loop:
-  // SW activates → clients.claim() → controllerchange fires → reload → repeat
+  var reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(!reloading&&document.readyState==='complete'){reloading=true;window.location.reload();}
+  });
 })();
 </script>
 <link rel="dns-prefetch" href="https://api.themoviedb.org">
 <link rel="dns-prefetch" href="https://image.tmdb.org">
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Netflix+Sans:wght@400;500;700&display=swap" rel="stylesheet" onerror="this.remove()">
@@ -98,10 +87,7 @@ a { text-decoration: none; color: inherit; }
   background: var(--nf-black);
   display: flex; align-items: center; justify-content: center; flex-direction: column;
   gap: 24px;
-  /* Hidden by default — shown only if not auto-logged-in */
-  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
 }
-#pw-gate.visible { opacity: 1; pointer-events: all; }
 #pw-gate::before {
   content: ''; position: absolute; inset: 0;
   background: url('https://assets.nflxext.com/ffe/siteui/vlv3signinui/45196dc8-d8f3-4a2e-96bf-f1c4b58f9933/b8af3888-5e7c-4cfc-88a7-7e0e6e0ab5dc/US-en-20240129-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover no-repeat;
@@ -486,18 +472,8 @@ main { padding-top: var(--header-h); }
 .continue-card-sub { font-size: 10px; color: var(--nf-text-muted); }
 .continue-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,.15); }
 .continue-progress-bar { height: 100%; background: var(--nf-red); }
-.continue-remove { 
-  position: absolute; top: 6px; right: 6px; 
-  background: rgba(0,0,0,.75); border: 1px solid rgba(255,255,255,.25); 
-  color: #fff; width: 22px; height: 22px; border-radius: 50%; 
-  font-size: 10px; display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity .2s; cursor: pointer; z-index: 5;
-}
-.continue-card:hover .continue-remove { opacity: 1; }
-@media (max-width: 768px) {
-  /* Always show X on mobile since hover doesn't work on touch */
-  .continue-remove { opacity: 0.7; }
-}
+.continue-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; display: none; align-items: center; justify-content: center; }
+.continue-card:hover .continue-remove { display: flex; }
 
 /* ══ LOAD MORE ═══════════════════════════════════════ */
 .load-more-wrap { display: flex; justify-content: center; padding: 24px 0 8px; }
@@ -513,16 +489,13 @@ main { padding-top: var(--header-h); }
 .nf-tab-btns {
   display: flex; gap: 2px; margin-bottom: 20px; padding: 0 4%;
   border-bottom: 2px solid #333;
-  overflow-x: auto; -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; -ms-overflow-style: none;
 }
-.nf-tab-btns::-webkit-scrollbar { display: none; }
 .nf-tab-btn {
   background: none; border: none; border-bottom: 3px solid transparent;
   color: var(--nf-text-dim); font-size: 14px; font-weight: 500;
   padding: 10px 20px; margin-bottom: -2px;
   transition: color var(--transition), border-color var(--transition);
-  white-space: nowrap; flex-shrink: 0;
+  white-space: nowrap;
 }
 .nf-tab-btn:hover { color: #fff; }
 .nf-tab-btn.active { color: #fff; border-bottom-color: var(--nf-red); font-weight: 700; }
@@ -608,9 +581,7 @@ main { padding-top: var(--header-h); }
 }
 .refresh-btn:hover { color: #fff; border-color: #666; }
 .leagues-bar {
-  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px;
-  scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  -ms-overflow-style: none;
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px; scrollbar-width: none;
 }
 .leagues-bar::-webkit-scrollbar { display: none; }
 .league-btn {
@@ -712,35 +683,24 @@ main { padding-top: var(--header-h); }
   position: fixed;
   bottom: 0; left: 0; right: 0;
   z-index: 600;
-  /* Extend background all the way to physical bottom edge, covering the iOS home indicator gap */
   background: rgba(20,20,20,.98);
   border-top: 1px solid #2f2f2f;
-  /* Height = nav buttons + safe area */
   height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  align-items: flex-start;
-  padding-top: 0;
+  align-items: center;
+  /* Force own compositing layer — prevents iOS scroll jank from moving it */
   -webkit-transform: translate3d(0,0,0);
   transform: translate3d(0,0,0);
   will-change: transform;
+  /* Prevent iOS from treating it as scrollable context */
   -webkit-overflow-scrolling: auto;
-  /* Prevent any gap by using a pseudo-element that fills below */
-}
-.mobile-nav::after {
-  content: '';
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  height: env(safe-area-inset-bottom, 0px);
-  background: rgba(20,20,20,.98);
-  pointer-events: none;
-  z-index: -1;
 }
 .mob-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; background: none; border: none; color: #aaa;
   font-size: 9px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase;
   transition: color var(--transition); padding: 6px 0;
-  min-height: var(--mobile-nav-h);
+  min-height: 44px;
 }
 .mob-btn svg { width: 22px; height: 22px; fill: currentColor; }
 .mob-btn.active { color: #fff; }
@@ -931,11 +891,6 @@ main { padding-top: var(--header-h); }
           <button class="color-btn" data-color="#e8884d" style="background:#e8884d" title="Orange"></button>
         </div>
       </div>
-      <div id="settings-account-row" style="display:none;border-top:1px solid #2a2a2a;padding-top:16px;">
-        <div class="settings-label">Account</div>
-        <div id="settings-account-email" style="font-size:13px;color:#888;margin-bottom:10px;word-break:break-all;"></div>
-        <button id="settings-signout-btn" style="width:100%;background:none;border:1px solid #555;color:#e87c26;font-size:13px;font-weight:600;padding:9px 20px;border-radius:4px;cursor:pointer;">↩ Sign Out</button>
-      </div>
     </div>
     <div class="settings-foot">
       <button class="btn-ghost" id="settings-reset">Reset</button>
@@ -955,7 +910,7 @@ main { padding-top: var(--header-h); }
       <button class="player-close" id="player-close">✕</button>
     </div>
     <div class="player-wrap">
-      <iframe id="player-iframe" src="about:blank" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="no-referrer-when-downgrade" title="Video player"></iframe>
+      <iframe id="player-iframe" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="no-referrer-when-downgrade" title="Video player"></iframe>
     </div>
     <div id="episode-selector-wrap" style="display:none">
       <div class="episode-selector">
@@ -1229,11 +1184,7 @@ function showToast(msg,type='',dur=2500){
    WATCHLIST
 ════════════════════════════════════════════════════ */
 function getWatchlist(){try{return JSON.parse(localStorage.getItem(WATCHLIST_KEY)||'[]');}catch(_){return[];}}
-// saveWatchlist: always writes localStorage; if cloud version installed on window, uses that instead
-function saveWatchlist(list){
-  if(window.saveWatchlist&&window.saveWatchlist!==saveWatchlist){window.saveWatchlist(list);return;}
-  try{localStorage.setItem(WATCHLIST_KEY,JSON.stringify(list));}catch(_){}updateWatchlistBadge();
-}
+function saveWatchlist(list){try{localStorage.setItem(WATCHLIST_KEY,JSON.stringify(list));}catch(_){}updateWatchlistBadge();}
 function isInWatchlist(id,type){return getWatchlist().some(i=>String(i.id)===String(id)&&i.type===type);}
 function toggleWatchlist(item){
   let list=getWatchlist();
@@ -1287,11 +1238,7 @@ function renderWatchlistTab(){
    CONTINUE WATCHING
 ════════════════════════════════════════════════════ */
 function getContinue(){try{return JSON.parse(localStorage.getItem(CONTINUE_KEY)||'[]');}catch(_){return[];}}
-// saveContinue: always writes localStorage; if cloud version installed on window, uses that instead
-function saveContinue(list){
-  if(window.saveContinue&&window.saveContinue!==saveContinue){window.saveContinue(list);return;}
-  try{localStorage.setItem(CONTINUE_KEY,JSON.stringify(list));}catch(_){}
-}
+function saveContinue(list){try{localStorage.setItem(CONTINUE_KEY,JSON.stringify(list));}catch(_){}}
 function addToContinue(item){
   let list=getContinue();
   const idx=list.findIndex(i=>String(i.id)===String(item.id)&&i.type===item.type);
@@ -1589,18 +1536,7 @@ function navigateToDetail(id,type){
 /* ════════════════════════════════════════════════════
    PLAYER
 ════════════════════════════════════════════════════ */
-function frameUrl(raw){
-  if(!raw)return 'about:blank';
-  // Never wrap our own domain or relative URLs - that causes X-Frame-Options errors
-  try{
-    const u=new URL(raw);
-    if(u.origin===window.location.origin)return raw;
-  }catch(_){
-    // relative URL - return as-is
-    return raw;
-  }
-  return `/api/frame?url=${encodeURIComponent(raw)}`;
-}
+function frameUrl(raw){return `/api/frame?url=${encodeURIComponent(raw)}`;}
 const SOURCES=[
   {key:'vidsrc',    label:'VidSrc',    movie:id=>`https://vidsrc.cc/v2/embed/movie/${id}`,               tv:(id,s,e)=>`https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`},
   {key:'vidsrc2',   label:'VidSrc 2',  movie:id=>`https://vidsrc.to/embed/movie/${id}`,                  tv:(id,s,e)=>`https://vidsrc.to/embed/tv/${id}/${s}/${e}`},
@@ -1642,8 +1578,7 @@ function switchSource(src){
 function openPlayer(){document.getElementById('player-modal').classList.add('active');document.body.style.overflow='hidden';}
 function closePlayer(){
   document.getElementById('player-modal').classList.remove('active');
-  document.getElementById('player-iframe').src='about:blank';
-  if(typeof _destroyHlsPlayer==='function')_destroyHlsPlayer();
+  document.getElementById('player-iframe').src='';
   document.body.style.overflow='';state.currentMedia=null;
 }
 function playMovie(movie){
@@ -1661,7 +1596,7 @@ async function playTV(show){
   document.getElementById('player-title').textContent=name;
   document.getElementById('player-subtitle').textContent='Loading episode data…';
   document.getElementById('episode-selector-wrap').style.display='block';
-  document.getElementById('player-iframe').src='about:blank';
+  document.getElementById('player-iframe').src='';
   resetSourceSwitcher();openPlayer();
   try{
     const details=await tmdb(`/tv/${show.id}`);
@@ -1796,67 +1731,6 @@ function showFranchises(){
 /* ════════════════════════════════════════════════════
    SPORTS
 ════════════════════════════════════════════════════ */
-
-/* HLS sport stream player */
-let _hlsInst = null;
-function _destroyHlsPlayer() {
-  const old = document.getElementById('_rw_hls_video');
-  if (old) { try{old.pause();old.src='about:blank';}catch(_){} old.remove(); }
-  if (_hlsInst) { try{_hlsInst.destroy();}catch(_){} _hlsInst = null; }
-  const iframe = document.getElementById('player-iframe');
-  if (iframe) iframe.style.display = '';
-}
-function _loadSportStream(url) {
-  if (!url) return;
-  const iframe = document.getElementById('player-iframe');
-  const wrap = document.querySelector('.player-wrap');
-  _destroyHlsPlayer();
-
-  const isHlsUrl = /\.m3u8(\?|$)/i.test(url) || /streamed\.(pk|su|me)\/.*stream/i.test(url);
-
-  if (!isHlsUrl) {
-    // Regular embed page — wrap with frame helper to block ads
-    iframe.src = frameUrl(url);
-    return;
-  }
-
-  // It's an HLS stream — use video element via HLS.js or native
-  iframe.style.display = 'none';
-  const vid = document.createElement('video');
-  vid.id = '_rw_hls_video';
-  vid.controls = true;
-  vid.autoplay = true;
-  vid.playsInline = true;
-  vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000;z-index:2;';
-  wrap.appendChild(vid);
-
-  // Try proxy first (gets around CORS on HLS), fall back to direct
-  const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
-
-  if (window.Hls && Hls.isSupported()) {
-    _hlsInst = new Hls({ enableWorker: false });
-    _hlsInst.loadSource(proxyUrl);
-    _hlsInst.attachMedia(vid);
-    _hlsInst.on(Hls.Events.ERROR, function(e, data) {
-      if (data.fatal && _hlsInst) {
-        // Retry direct
-        _hlsInst.loadSource(url);
-        _hlsInst.startLoad();
-      }
-    });
-    vid.play().catch(()=>{});
-  } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-    // Safari / iOS native HLS
-    vid.src = url;
-    vid.play().catch(()=>{});
-  } else {
-    // No HLS support — fall back to iframe
-    vid.remove();
-    iframe.style.display = '';
-    iframe.src = frameUrl(url);
-  }
-}
-
 /* ════════════════════════════════════════════════════
    SPORTS
 ════════════════════════════════════════════════════ */
@@ -2017,7 +1891,7 @@ async function playMatch(matchKey){
 
   const sw=document.getElementById('source-switcher');
   sw.innerHTML='<span class="source-label">Stream</span><span style="font-size:11px;color:#666;margin-left:8px">Loading…</span>';
-  document.getElementById('player-iframe').src='about:blank';
+  document.getElementById('player-iframe').src='';
   openPlayer();
 
   // fetch actual stream embed URLs from the streams API
@@ -2036,9 +1910,6 @@ async function playMatch(matchKey){
     return;
   }
 
-  // Clean up any existing HLS player
-  _destroyHlsPlayer();
-
   // build source switcher
   sw.innerHTML='<span class="source-label">Stream</span>';
   allStreams.forEach((stream,i)=>{
@@ -2051,14 +1922,14 @@ async function playMatch(matchKey){
     btn.addEventListener('click',()=>{
       sw.querySelectorAll('.src-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      _loadSportStream(url);
+      document.getElementById('player-iframe').src=frameUrl(url);
       document.getElementById('player-subtitle').textContent=label;
     });
     sw.appendChild(btn);
   });
 
   const firstUrl=allStreams[0].embedUrl||allStreams[0].url||allStreams[0].hls;
-  _loadSportStream(firstUrl);
+  document.getElementById('player-iframe').src=frameUrl(firstUrl);
   document.getElementById('player-subtitle').textContent=`${allStreams.length} stream${allStreams.length!==1?'s':''} available`;
 }
 
@@ -2105,7 +1976,6 @@ function applyAccent(color){
   document.documentElement.style.setProperty('--nf-red-hover',color);
 }
 function saveSettings(){
-  if(window.saveSettings&&window.saveSettings!==saveSettings){window.saveSettings();return;}
   try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(state.settings));}catch(_){}
 }
 
@@ -2283,14 +2153,13 @@ function unlock(token, user) {
   authToken = token;
   authUser  = user;
   try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch(_) {}
-  const gate = document.getElementById('pw-gate');
-  gate.classList.remove('visible');
-  gate.style.display = 'none';
+  document.getElementById('pw-gate').style.display = 'none';
   document.body.classList.add('authenticated');
   document.body.style.overflow = '';
-  // Let CSS media query handle mobile-nav visibility — just un-force-hide it
-  const mn = document.getElementById('mobile-nav');
-  if (mn) mn.style.removeProperty('display');
+  if (window.innerWidth <= 768) {
+    const mn = document.getElementById('mobile-nav');
+    if (mn) mn.style.display = 'flex';
+  }
   // Show account indicator
   if (!user.isGlobal) {
     const wrap = document.getElementById('account-wrap');
@@ -2312,11 +2181,6 @@ function unlock(token, user) {
       });
     }
   }
-  // Populate settings account row
-  const settingsRow = document.getElementById('settings-account-row');
-  const settingsEmail = document.getElementById('settings-account-email');
-  if (settingsRow) settingsRow.style.display = 'block';
-  if (settingsEmail) settingsEmail.textContent = user.isGlobal ? 'Signed in with access code' : (user.email || '');
   initApp();
   // Pull cloud data after init (won't block)
   if (!user.isGlobal) syncFromCloud();
@@ -2385,19 +2249,12 @@ document.getElementById('reg-btn').addEventListener('click', async () => {
 })();
 
 // ── Logout ───────────────────────────────────────────
-async function doLogout() {
+document.getElementById('logout-btn').addEventListener('click', async () => {
   try { await apiPost('/api/auth?action=logout', {}, authToken); } catch(_) {}
   try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
   authToken = null; authUser = null;
   location.reload();
-}
-document.getElementById('logout-btn').addEventListener('click', doLogout);
-// Settings modal sign-out (may be called before element exists, wire after DOM ready)
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
 });
-// Also wire immediately in case DOMContentLoaded already fired
-document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
 
 // ── Account dropdown toggle ──────────────────────────
 document.getElementById('account-btn')?.addEventListener('click', e => {
@@ -2421,12 +2278,12 @@ async function syncFromCloud() {
     }
     if (data.watchlist && Array.isArray(data.watchlist) && data.watchlist.length) {
       const local = getWatchlist();
+      // deduplicate by id+type, cloud items take precedence but keep local items too
       const merged = [...data.watchlist];
       for (const item of local) {
         if (!merged.find(m => String(m.id)===String(item.id) && m.type===item.type)) merged.push(item);
       }
-      // Write direct to localStorage - never call window.save* here to avoid recursion
-      try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(merged)); } catch(_) {}
+      saveWatchlist(merged);
       updateWatchlistBadge();
     }
     if (data.continues && Array.isArray(data.continues) && data.continues.length) {
@@ -2435,8 +2292,7 @@ async function syncFromCloud() {
       for (const item of local) {
         if (!merged.find(m => String(m.id)===String(item.id) && m.type===item.type)) merged.push(item);
       }
-      // Write direct to localStorage - never call window.save* here to avoid recursion
-      try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(merged)); } catch(_) {}
+      saveContinue(merged);
       renderContinueSection();
     }
   } catch(_) {}
@@ -2447,6 +2303,7 @@ async function pushToCloud(field, value) {
   try {
     await apiPost(`/api/user?field=${field}`, { [field]: value }, authToken);
   } catch(_) {
+    // Queue for retry
     try {
       const pending = JSON.parse(localStorage.getItem(SYNC_PENDING_KEY)||'[]');
       pending.push({ field, value, ts: Date.now() });
@@ -2455,20 +2312,25 @@ async function pushToCloud(field, value) {
   }
 }
 
-// Set up cloud-push versions of save functions on window.
-// These write directly to localStorage (no function calls) then push to cloud.
-// The main script's local saveX() functions are separate and call these if signed in.
+// Patch the existing save functions to also push to cloud
+const _origSaveSettings = window.saveSettings;
 window.saveSettings = function() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(_) {}
+  if (_origSaveSettings) _origSaveSettings();
+  else { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(_) {} }
   pushToCloud('settings', state.settings);
 };
+
+const _origSaveWatchlist = window.saveWatchlist;
 window.saveWatchlist = function(list) {
-  try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); } catch(_) {}
-  updateWatchlistBadge();
+  if (_origSaveWatchlist) _origSaveWatchlist(list);
+  else { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); } catch(_) {} }
   pushToCloud('watchlist', list);
 };
+
+const _origSaveContinue = window.saveContinue;
 window.saveContinue = function(list) {
-  try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(list)); } catch(_) {}
+  if (_origSaveContinue) _origSaveContinue(list);
+  else { try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(list)); } catch(_) {} }
   pushToCloud('continues', list);
 };
 
@@ -2479,9 +2341,6 @@ window.saveContinue = function(list) {
 
   if (!storedToken || !storedUser) {
     // Show gate
-    const gate = document.getElementById('pw-gate');
-    gate.classList.add('visible');
-    gate.style.display = '';
     document.body.style.overflow = 'hidden';
     document.getElementById('login-email')?.focus();
     return;
@@ -2519,9 +2378,6 @@ window.saveContinue = function(list) {
 
 function clearStoredAuth() {
   try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
-  const gate = document.getElementById('pw-gate');
-  gate.classList.add('visible');
-  gate.style.display = '';
   document.body.style.overflow = 'hidden';
   document.getElementById('login-email')?.focus();
 }
