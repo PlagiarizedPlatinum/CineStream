@@ -88,7 +88,10 @@ a { text-decoration: none; color: inherit; }
   background: var(--nf-black);
   display: flex; align-items: center; justify-content: center; flex-direction: column;
   gap: 24px;
+  /* Hidden by default — shown only if not auto-logged-in */
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
 }
+#pw-gate.visible { opacity: 1; pointer-events: all; }
 #pw-gate::before {
   content: ''; position: absolute; inset: 0;
   background: url('https://assets.nflxext.com/ffe/siteui/vlv3signinui/45196dc8-d8f3-4a2e-96bf-f1c4b58f9933/b8af3888-5e7c-4cfc-88a7-7e0e6e0ab5dc/US-en-20240129-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover no-repeat;
@@ -1216,15 +1219,18 @@ function showToast(msg,type='',dur=2500){
    WATCHLIST
 ════════════════════════════════════════════════════ */
 function getWatchlist(){try{return JSON.parse(localStorage.getItem(WATCHLIST_KEY)||'[]');}catch(_){return[];}}
-function saveWatchlist(list){try{localStorage.setItem(WATCHLIST_KEY,JSON.stringify(list));}catch(_){}updateWatchlistBadge();}
-window.saveWatchlist=function(list){saveWatchlist(list);};
+// saveWatchlist: always writes localStorage; if cloud version installed on window, uses that instead
+function saveWatchlist(list){
+  if(window.saveWatchlist&&window.saveWatchlist!==saveWatchlist){window.saveWatchlist(list);return;}
+  try{localStorage.setItem(WATCHLIST_KEY,JSON.stringify(list));}catch(_){}updateWatchlistBadge();
+}
 function isInWatchlist(id,type){return getWatchlist().some(i=>String(i.id)===String(id)&&i.type===type);}
 function toggleWatchlist(item){
   let list=getWatchlist();
   const idx=list.findIndex(i=>String(i.id)===String(item.id)&&i.type===item.type);
   if(idx>=0){list.splice(idx,1);showToast('Removed from My List');}
   else{list.unshift({id:item.id,type:item.type,title:item.title,poster:item.poster,year:item.year,rating:item.rating,added:Date.now()});showToast('Added to My List','success');}
-  window.saveWatchlist(list);
+  saveWatchlist(list);
   refreshWatchlistButtons(item.id,item.type);
   if(state.currentTab==='watchlist')renderWatchlistTab();
 }
@@ -1271,8 +1277,11 @@ function renderWatchlistTab(){
    CONTINUE WATCHING
 ════════════════════════════════════════════════════ */
 function getContinue(){try{return JSON.parse(localStorage.getItem(CONTINUE_KEY)||'[]');}catch(_){return[];}}
-function saveContinue(list){try{localStorage.setItem(CONTINUE_KEY,JSON.stringify(list));}catch(_){}}
-window.saveContinue=function(list){saveContinue(list);};
+// saveContinue: always writes localStorage; if cloud version installed on window, uses that instead
+function saveContinue(list){
+  if(window.saveContinue&&window.saveContinue!==saveContinue){window.saveContinue(list);return;}
+  try{localStorage.setItem(CONTINUE_KEY,JSON.stringify(list));}catch(_){}
+}
 function addToContinue(item){
   let list=getContinue();
   const idx=list.findIndex(i=>String(i.id)===String(item.id)&&i.type===item.type);
@@ -1280,12 +1289,12 @@ function addToContinue(item){
   if(idx>=0)list.splice(idx,1);
   list.unshift(entry);
   if(list.length>20)list.length=20;
-  window.saveContinue(list);
+  saveContinue(list);
   renderContinueSection();
 }
 function removeFromContinue(id,type){
   let list=getContinue().filter(i=>!(String(i.id)===String(id)&&i.type===type));
-  window.saveContinue(list);
+  saveContinue(list);
   renderContinueSection();
 }
 function renderContinueSection(){
@@ -1570,7 +1579,18 @@ function navigateToDetail(id,type){
 /* ════════════════════════════════════════════════════
    PLAYER
 ════════════════════════════════════════════════════ */
-function frameUrl(raw){return `/api/frame?url=${encodeURIComponent(raw)}`;}
+function frameUrl(raw){
+  if(!raw)return '';
+  // Never wrap our own domain or relative URLs - that causes X-Frame-Options errors
+  try{
+    const u=new URL(raw);
+    if(u.origin===window.location.origin)return raw;
+  }catch(_){
+    // relative URL - return as-is
+    return raw;
+  }
+  return `/api/frame?url=${encodeURIComponent(raw)}`;
+}
 const SOURCES=[
   {key:'vidsrc',    label:'VidSrc',    movie:id=>`https://vidsrc.cc/v2/embed/movie/${id}`,               tv:(id,s,e)=>`https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}`},
   {key:'vidsrc2',   label:'VidSrc 2',  movie:id=>`https://vidsrc.to/embed/movie/${id}`,                  tv:(id,s,e)=>`https://vidsrc.to/embed/tv/${id}/${s}/${e}`},
@@ -2075,9 +2095,9 @@ function applyAccent(color){
   document.documentElement.style.setProperty('--nf-red-hover',color);
 }
 function saveSettings(){
+  if(window.saveSettings&&window.saveSettings!==saveSettings){window.saveSettings();return;}
   try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(state.settings));}catch(_){}
 }
-window.saveSettings=saveSettings;
 
 /* ════════════════════════════════════════════════════
    HEADER SCROLL
@@ -2167,8 +2187,8 @@ function wireEvents(){
   document.getElementById('football-refresh')?.addEventListener('click',()=>{state.footballLoaded=false;loadFootball();});
 
   // Watchlist / continue
-  document.getElementById('clear-watchlist-btn')?.addEventListener('click',()=>{window.saveWatchlist([]);renderWatchlistTab();showToast('Watchlist cleared');});
-  document.getElementById('clear-continue-btn')?.addEventListener('click',()=>{window.saveContinue([]);renderContinueSection();showToast('Continue watching cleared');});
+  document.getElementById('clear-watchlist-btn')?.addEventListener('click',()=>{saveWatchlist([]);renderWatchlistTab();showToast('Watchlist cleared');});
+  document.getElementById('clear-continue-btn')?.addEventListener('click',()=>{saveContinue([]);renderContinueSection();showToast('Continue watching cleared');});
 
   // Slider arrows
   document.querySelectorAll('.slider-arrow').forEach(arrow=>{
@@ -2253,7 +2273,9 @@ function unlock(token, user) {
   authToken = token;
   authUser  = user;
   try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch(_) {}
-  document.getElementById('pw-gate').style.display = 'none';
+  const gate = document.getElementById('pw-gate');
+  gate.classList.remove('visible');
+  gate.style.display = 'none';
   document.body.classList.add('authenticated');
   document.body.style.overflow = '';
   // Let CSS media query handle mobile-nav visibility — just un-force-hide it
@@ -2389,12 +2411,12 @@ async function syncFromCloud() {
     }
     if (data.watchlist && Array.isArray(data.watchlist) && data.watchlist.length) {
       const local = getWatchlist();
-      // deduplicate by id+type, cloud items take precedence but keep local items too
       const merged = [...data.watchlist];
       for (const item of local) {
         if (!merged.find(m => String(m.id)===String(item.id) && m.type===item.type)) merged.push(item);
       }
-      saveWatchlist(merged);
+      // Write direct to localStorage - never call window.save* here to avoid recursion
+      try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(merged)); } catch(_) {}
       updateWatchlistBadge();
     }
     if (data.continues && Array.isArray(data.continues) && data.continues.length) {
@@ -2403,7 +2425,8 @@ async function syncFromCloud() {
       for (const item of local) {
         if (!merged.find(m => String(m.id)===String(item.id) && m.type===item.type)) merged.push(item);
       }
-      saveContinue(merged);
+      // Write direct to localStorage - never call window.save* here to avoid recursion
+      try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(merged)); } catch(_) {}
       renderContinueSection();
     }
   } catch(_) {}
@@ -2414,7 +2437,6 @@ async function pushToCloud(field, value) {
   try {
     await apiPost(`/api/user?field=${field}`, { [field]: value }, authToken);
   } catch(_) {
-    // Queue for retry
     try {
       const pending = JSON.parse(localStorage.getItem(SYNC_PENDING_KEY)||'[]');
       pending.push({ field, value, ts: Date.now() });
@@ -2423,25 +2445,20 @@ async function pushToCloud(field, value) {
   }
 }
 
-// Patch the existing save functions to also push to cloud
-const _origSaveSettings = window.saveSettings;
+// Set up cloud-push versions of save functions on window.
+// These write directly to localStorage (no function calls) then push to cloud.
+// The main script's local saveX() functions are separate and call these if signed in.
 window.saveSettings = function() {
-  if (_origSaveSettings) _origSaveSettings();
-  else { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(_) {} }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch(_) {}
   pushToCloud('settings', state.settings);
 };
-
-const _origSaveWatchlist = window.saveWatchlist;
 window.saveWatchlist = function(list) {
-  if (_origSaveWatchlist) _origSaveWatchlist(list);
-  else { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); } catch(_) {} }
+  try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list)); } catch(_) {}
+  updateWatchlistBadge();
   pushToCloud('watchlist', list);
 };
-
-const _origSaveContinue = window.saveContinue;
 window.saveContinue = function(list) {
-  if (_origSaveContinue) _origSaveContinue(list);
-  else { try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(list)); } catch(_) {} }
+  try { localStorage.setItem(CONTINUE_KEY, JSON.stringify(list)); } catch(_) {}
   pushToCloud('continues', list);
 };
 
@@ -2452,6 +2469,9 @@ window.saveContinue = function(list) {
 
   if (!storedToken || !storedUser) {
     // Show gate
+    const gate = document.getElementById('pw-gate');
+    gate.classList.add('visible');
+    gate.style.display = '';
     document.body.style.overflow = 'hidden';
     document.getElementById('login-email')?.focus();
     return;
@@ -2489,6 +2509,9 @@ window.saveContinue = function(list) {
 
 function clearStoredAuth() {
   try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
+  const gate = document.getElementById('pw-gate');
+  gate.classList.add('visible');
+  gate.style.display = '';
   document.body.style.overflow = 'hidden';
   document.getElementById('login-email')?.focus();
 }
