@@ -549,6 +549,7 @@ console.log('[RW-FRAME] Shield v8 ABSOLUTE NUKE active — 33 vectors');
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
+      'X-Frame-Options': 'SAMEORIGIN',
       'Cache-Control': 'no-store, no-cache, must-revalidate, private',
       'X-Content-Type-Options': 'nosniff',
       'X-Permitted-Cross-Domain-Policies': 'none',
