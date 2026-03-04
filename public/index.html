@@ -28,6 +28,7 @@
 </script>
 <link rel="dns-prefetch" href="https://api.themoviedb.org">
 <link rel="dns-prefetch" href="https://image.tmdb.org">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Netflix+Sans:wght@400;500;700&display=swap" rel="stylesheet" onerror="this.remove()">
@@ -472,8 +473,17 @@ main { padding-top: var(--header-h); }
 .continue-card-sub { font-size: 10px; color: var(--nf-text-muted); }
 .continue-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,.15); }
 .continue-progress-bar { height: 100%; background: var(--nf-red); }
-.continue-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; display: none; align-items: center; justify-content: center; }
-.continue-card:hover .continue-remove { display: flex; }
+.continue-remove { 
+  position: absolute; top: 6px; right: 6px; 
+  background: rgba(0,0,0,.85); border: 1px solid rgba(255,255,255,.2); 
+  color: #fff; width: 24px; height: 24px; border-radius: 50%; 
+  font-size: 11px; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s; cursor: pointer; z-index: 5;
+}
+.continue-card:hover .continue-remove { opacity: 1; }
+@media (max-width: 768px) {
+  .continue-remove { opacity: 1; width: 22px; height: 22px; }
+}
 
 /* ══ LOAD MORE ═══════════════════════════════════════ */
 .load-more-wrap { display: flex; justify-content: center; padding: 24px 0 8px; }
@@ -489,13 +499,17 @@ main { padding-top: var(--header-h); }
 .nf-tab-btns {
   display: flex; gap: 2px; margin-bottom: 20px; padding: 0 4%;
   border-bottom: 2px solid #333;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; -ms-overflow-style: none;
+  touch-action: pan-x;
 }
+.nf-tab-btns::-webkit-scrollbar { display: none; }
 .nf-tab-btn {
   background: none; border: none; border-bottom: 3px solid transparent;
   color: var(--nf-text-dim); font-size: 14px; font-weight: 500;
   padding: 10px 20px; margin-bottom: -2px;
   transition: color var(--transition), border-color var(--transition);
-  white-space: nowrap;
+  white-space: nowrap; flex-shrink: 0;
 }
 .nf-tab-btn:hover { color: #fff; }
 .nf-tab-btn.active { color: #fff; border-bottom-color: var(--nf-red); font-weight: 700; }
@@ -582,6 +596,7 @@ main { padding-top: var(--header-h); }
 .refresh-btn:hover { color: #fff; border-color: #666; }
 .leagues-bar {
   display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px; scrollbar-width: none;
+  touch-action: pan-x; -webkit-overflow-scrolling: touch;
 }
 .leagues-bar::-webkit-scrollbar { display: none; }
 .league-btn {
@@ -891,6 +906,11 @@ main { padding-top: var(--header-h); }
           <button class="color-btn" data-color="#e8884d" style="background:#e8884d" title="Orange"></button>
         </div>
       </div>
+      <div id="settings-account-section" style="border-top:1px solid #2a2a2a;padding-top:16px;display:none">
+        <div class="settings-label">Account</div>
+        <div id="settings-account-info" style="font-size:13px;color:#888;margin-bottom:10px"></div>
+        <button id="settings-signout-btn" style="background:none;border:1px solid #555;color:#e87c26;font-size:13px;font-weight:600;padding:8px 20px;border-radius:4px;cursor:pointer;transition:all .15s;width:100%">↩ Sign Out</button>
+      </div>
     </div>
     <div class="settings-foot">
       <button class="btn-ghost" id="settings-reset">Reset</button>
@@ -1169,6 +1189,7 @@ let state={
   settings:{source:'vidsrc',accent:'#e50914',cardSize:160},
 };
 const matchMap=new Map();
+let _playerJustOpened = false;
 
 /* ════════════════════════════════════════════════════
    TOAST
@@ -1575,10 +1596,22 @@ function switchSource(src){
   document.querySelectorAll('#source-switcher .src-btn').forEach(b=>b.classList.toggle('active',b.dataset.src===src));
   if(state.currentMedia?.type!=='football')setPlayerSrc();
 }
-function openPlayer(){document.getElementById('player-modal').classList.add('active');document.body.style.overflow='hidden';}
+function openPlayer(){
+  document.getElementById('player-modal').classList.add('active');
+  document.body.style.overflow='hidden';
+  // Small guard to prevent immediate close from event bubbling
+  _playerJustOpened = true;
+  setTimeout(()=>{ _playerJustOpened = false; }, 300);
+}
 function closePlayer(){
+  if(_playerJustOpened) return;
   document.getElementById('player-modal').classList.remove('active');
   document.getElementById('player-iframe').src='';
+  document.getElementById('player-iframe').style.display='';
+  // Clean up HLS
+  const vid=document.getElementById('hls-video-player');
+  if(vid){vid.pause();vid.src='';vid.remove();}
+  if(_hlsInstance){try{_hlsInstance.destroy();}catch(_){}  _hlsInstance=null;}
   document.body.style.overflow='';state.currentMedia=null;
 }
 function playMovie(movie){
@@ -1729,8 +1762,63 @@ function showFranchises(){
 }
 
 /* ════════════════════════════════════════════════════
-   SPORTS
+   SPORTS STREAM LOADER (HLS + embed)
 ════════════════════════════════════════════════════ */
+let _hlsInstance = null;
+
+function loadSportStream(url, isHls) {
+  const iframe = document.getElementById('player-iframe');
+  const wrap = document.querySelector('.player-wrap');
+
+  // Remove any existing HLS video element
+  const existingVid = document.getElementById('hls-video-player');
+  if (existingVid) existingVid.remove();
+  if (_hlsInstance) { try { _hlsInstance.destroy(); } catch(_) {} _hlsInstance = null; }
+
+  if (!isHls) {
+    // Regular embed URL — use iframe as before
+    iframe.style.display = '';
+    iframe.src = frameUrl(url);
+    return;
+  }
+
+  // HLS stream — use a video element with HLS.js
+  iframe.style.display = 'none';
+  const vid = document.createElement('video');
+  vid.id = 'hls-video-player';
+  vid.controls = true;
+  vid.autoplay = true;
+  vid.playsInline = true;
+  vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000;';
+
+  // Try proxied URL first (for cross-origin HLS)
+  const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+
+  if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+    _hlsInstance = new Hls({
+      xhrSetup: (xhr) => { xhr.setRequestHeader('Origin', window.location.origin); },
+    });
+    _hlsInstance.loadSource(proxyUrl);
+    _hlsInstance.attachMedia(vid);
+    _hlsInstance.on(Hls.Events.ERROR, (e, data) => {
+      if (data.fatal) {
+        // Fallback: try direct URL
+        _hlsInstance.loadSource(url);
+      }
+    });
+  } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari native HLS
+    vid.src = url;
+  } else {
+    // Fallback to iframe embed
+    iframe.style.display = '';
+    iframe.src = frameUrl(url);
+    return;
+  }
+
+  wrap.appendChild(vid);
+}
+
 /* ════════════════════════════════════════════════════
    SPORTS
 ════════════════════════════════════════════════════ */
@@ -1915,6 +2003,7 @@ async function playMatch(matchKey){
   allStreams.forEach((stream,i)=>{
     const url=stream.embedUrl||stream.url||stream.hls||'';
     if(!url)return;
+    const isHls=!stream.embedUrl&&(url.includes('.m3u8')||stream.hls);
     const label=`${stream._sourceName||'Stream'} ${stream.streamNo||i+1}${stream.hd?' HD':''}${stream.language&&stream.language!=='English'?' ('+stream.language+')':''}`;
     const btn=document.createElement('button');
     btn.className=`src-btn${i===0?' active':''}`;
@@ -1922,14 +2011,16 @@ async function playMatch(matchKey){
     btn.addEventListener('click',()=>{
       sw.querySelectorAll('.src-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById('player-iframe').src=frameUrl(url);
+      loadSportStream(url,isHls);
       document.getElementById('player-subtitle').textContent=label;
     });
     sw.appendChild(btn);
   });
 
-  const firstUrl=allStreams[0].embedUrl||allStreams[0].url||allStreams[0].hls;
-  document.getElementById('player-iframe').src=frameUrl(firstUrl);
+  const firstStream=allStreams[0];
+  const firstUrl=firstStream.embedUrl||firstStream.url||firstStream.hls;
+  const firstIsHls=!firstStream.embedUrl&&(firstUrl.includes('.m3u8')||firstStream.hls);
+  loadSportStream(firstUrl,firstIsHls);
   document.getElementById('player-subtitle').textContent=`${allStreams.length} stream${allStreams.length!==1?'s':''} available`;
 }
 
@@ -2003,10 +2094,40 @@ function wireEvents(){
 
   // Mobile nav
   document.querySelectorAll('.mob-btn[data-tab]').forEach(btn=>btn.addEventListener('click',()=>showTab(btn.dataset.tab)));
-  document.getElementById('mob-settings')?.addEventListener('click',()=>document.getElementById('settings-modal').classList.add('active'));
 
   // Settings
-  document.getElementById('settings-btn')?.addEventListener('click',()=>document.getElementById('settings-modal').classList.add('active'));
+  document.getElementById('settings-btn')?.addEventListener('click',()=>{
+    document.getElementById('settings-modal').classList.add('active');
+    // Populate account section if logged in
+    const authUser = window._rwAuthUser;
+    if(authUser){
+      const section=document.getElementById('settings-account-section');
+      const info=document.getElementById('settings-account-info');
+      if(section)section.style.display='block';
+      if(info){
+        if(authUser.isGlobal){
+          info.textContent='Signed in with access code';
+          const sb=document.getElementById('settings-signout-btn');
+          if(sb)sb.textContent='↩ Sign Out / Switch Account';
+        }else{
+          info.textContent=authUser.email||'Signed in';
+        }
+      }
+    }
+  });
+  document.getElementById('mob-settings')?.addEventListener('click',()=>{
+    document.getElementById('settings-modal').classList.add('active');
+    const authUser = window._rwAuthUser;
+    if(authUser){
+      const section=document.getElementById('settings-account-section');
+      const info=document.getElementById('settings-account-info');
+      if(section)section.style.display='block';
+      if(info){
+        if(authUser.isGlobal){info.textContent='Signed in with access code';}
+        else{info.textContent=authUser.email||'Signed in';}
+      }
+    }
+  });
   document.getElementById('settings-close')?.addEventListener('click',()=>document.getElementById('settings-modal').classList.remove('active'));
   document.getElementById('settings-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('active');});
   document.querySelectorAll('#settings-src-btns .settings-src-btn').forEach(btn=>btn.addEventListener('click',()=>{
@@ -2152,14 +2273,14 @@ async function apiGet(url, token) {
 function unlock(token, user) {
   authToken = token;
   authUser  = user;
+  window._rwAuthUser = user; // expose for settings modal
   try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch(_) {}
   document.getElementById('pw-gate').style.display = 'none';
   document.body.classList.add('authenticated');
   document.body.style.overflow = '';
-  if (window.innerWidth <= 768) {
-    const mn = document.getElementById('mobile-nav');
-    if (mn) mn.style.display = 'flex';
-  }
+  // Mobile nav is shown/hidden via CSS media query - just ensure it's not force-hidden
+  const mn = document.getElementById('mobile-nav');
+  if (mn) mn.style.display = '';
   // Show account indicator
   if (!user.isGlobal) {
     const wrap = document.getElementById('account-wrap');
@@ -2249,12 +2370,14 @@ document.getElementById('reg-btn').addEventListener('click', async () => {
 })();
 
 // ── Logout ───────────────────────────────────────────
-document.getElementById('logout-btn').addEventListener('click', async () => {
+async function doLogout() {
   try { await apiPost('/api/auth?action=logout', {}, authToken); } catch(_) {}
   try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch(_) {}
   authToken = null; authUser = null;
   location.reload();
-});
+}
+document.getElementById('logout-btn').addEventListener('click', doLogout);
+document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
 
 // ── Account dropdown toggle ──────────────────────────
 document.getElementById('account-btn')?.addEventListener('click', e => {
