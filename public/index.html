@@ -1153,7 +1153,8 @@ main { padding-top: var(--header-h); }
     const _replace=location.replace.bind(location);
     const _assign=location.assign.bind(location);
     const sameOrigin=(url)=>{try{return new URL(url,location.href).origin===location.origin;}catch(_){return false;}};
-    try{Object.defineProperty(location,'href',{get(){return window.location.href;},set(v){if(sameOrigin(v))_assign(v);},configurable:false});}catch(_){}
+    // NOTE: location.href cannot be safely redefined on desktop Chromium (non-configurable property).
+    // location.replace and location.assign overrides below are sufficient for redirect blocking.
     try{location.replace=(url)=>{if(sameOrigin(url))_replace(url);};} catch(_){}
     try{location.assign=(url)=>{if(sameOrigin(url))_assign(url);};}catch(_){}
     const _push=history.pushState.bind(history);
