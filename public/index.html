@@ -12,21 +12,24 @@
   if(!('serviceWorker' in navigator)){return;}
   navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'})
     .then(function(reg){
-      // Delay any waiting SW activation until after the page has fully loaded
-      // and is idle — activating mid-navigation causes the SW to intercept the
-      // /title navigate fetch during clients.claim() and can mishandle it.
+      // Only activate a waiting SW after the page is fully idle.
+      // Early activation (mid-load) causes clients.claim() to interrupt in-flight
+      // fetches, which crashes the page with ERR_FAILED / crbug/1173575.
       function activateWaiting(sw){
+        function doActivate(){ sw.postMessage('SKIP_WAITING'); }
         if(document.readyState==='complete'){
-          sw.postMessage('SKIP_WAITING');
+          // Already loaded — wait one extra tick so any pending microtasks settle
+          setTimeout(doActivate, 100);
         } else {
-          window.addEventListener('load',function(){sw.postMessage('SKIP_WAITING');},{once:true});
+          window.addEventListener('load', function(){ setTimeout(doActivate, 100); }, {once:true});
         }
       }
-      if(reg.waiting)activateWaiting(reg.waiting);
-      reg.addEventListener('updatefound',function(){
-        var sw=reg.installing;if(!sw)return;
-        // Activate silently — clients.claim() in the SW handles takeover without reload
-        sw.addEventListener('statechange',function(){if(sw.state==='installed')activateWaiting(sw);});
+      if(reg.waiting) activateWaiting(reg.waiting);
+      reg.addEventListener('updatefound', function(){
+        var sw = reg.installing; if(!sw) return;
+        sw.addEventListener('statechange', function(){
+          if(sw.state === 'installed') activateWaiting(sw);
+        });
       });
     }).catch(function(){});
   // DO NOT add controllerchange→reload here — it causes infinite refresh loop:

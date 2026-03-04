@@ -13,9 +13,9 @@
 
 'use strict';
 
-const SW_VERSION   = 'rw-v9';
+const SW_VERSION   = 'rw-v10';
 const SELF_ORIGIN  = self.location.origin;
-const BLOCK_CACHE  = 'rw-blocked-v9';
+const BLOCK_CACHE  = 'rw-blocked-v10';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MEGA BLOCKED HOSTNAME SET
@@ -220,8 +220,9 @@ function silentBlockJs() {
    LIFECYCLE
 ═══════════════════════════════════════════════════════════════════════════ */
 self.addEventListener('install', () => {
-  // Skip waiting immediately — no old SW delay
-  self.skipWaiting();
+  // Do NOT call skipWaiting() here automatically.
+  // Doing so causes clients.claim() to fire mid-page-load, interrupting in-flight
+  // fetches and crashing the page. The page controls when to activate via postMessage.
 });
 
 self.addEventListener('activate', e => {

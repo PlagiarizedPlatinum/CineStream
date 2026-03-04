@@ -8,7 +8,21 @@
 <script>
 (function(){
   if(!('serviceWorker' in navigator))return;
-  navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'}).catch(()=>{});
+  navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'})
+    .then(function(reg){
+      // If a new SW is waiting, activate it only after full page load + settle.
+      // Never activate mid-load — causes in-flight fetch crashes.
+      function activateWaiting(sw){
+        function doActivate(){ sw.postMessage('SKIP_WAITING'); }
+        if(document.readyState==='complete'){ setTimeout(doActivate,100); }
+        else { window.addEventListener('load',function(){ setTimeout(doActivate,100); },{once:true}); }
+      }
+      if(reg.waiting) activateWaiting(reg.waiting);
+      reg.addEventListener('updatefound',function(){
+        var sw=reg.installing; if(!sw) return;
+        sw.addEventListener('statechange',function(){ if(sw.state==='installed') activateWaiting(sw); });
+      });
+    }).catch(function(){});
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
