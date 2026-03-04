@@ -13,9 +13,9 @@
 
 'use strict';
 
-const SW_VERSION   = 'rw-v7';
+const SW_VERSION   = 'rw-v8';
 const SELF_ORIGIN  = self.location.origin;
-const BLOCK_CACHE  = 'rw-blocked-v7';
+const BLOCK_CACHE  = 'rw-blocked-v8';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MEGA BLOCKED HOSTNAME SET
@@ -277,10 +277,14 @@ self.addEventListener('fetch', e => {
   // SPA rule: this tab must NEVER navigate away from our origin.
   // Any top-frame navigation to another origin = ad redirect. Kill it.
   if (mode === 'navigate' && dest === 'document') {
-    if (origin !== SELF_ORIGIN) {
-      console.warn('[SW v7] BLOCKED top-level nav →', url);
-      // Respond with history.back() — no location.replace('/') which would
-      // reload the SPA and clear state/console
+    // Use startsWith check in addition to origin equality to avoid false
+    // positives during SW activation / clients.claim() race conditions.
+    const isSameOrigin = origin === SELF_ORIGIN
+      || url.startsWith(SELF_ORIGIN + '/')
+      || url.startsWith(SELF_ORIGIN + '?')
+      || url === SELF_ORIGIN;
+    if (!isSameOrigin) {
+      console.warn('[SW v8] BLOCKED top-level nav →', url);
       e.respondWith(new Response(
         '<html><body><script>try{history.back();}catch(e){}<\/script></body></html>',
         { status: 200, headers: {'Content-Type':'text/html','Cache-Control':'no-store','X-RW-Shield':'nav-blocked'} }
@@ -288,7 +292,7 @@ self.addEventListener('fetch', e => {
       notifyBlocked(hostname, 'navigation');
       return;
     }
-    return; // Same-origin navigation: fine
+    return; // Same-origin navigation: pass through unconditionally
   }
 
   // ─── RULE 4: Block ad iframes / sub-frames ────────────────────────────
