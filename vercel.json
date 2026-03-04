@@ -16,46 +16,28 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Robots-Tag",                    "value": "noindex, nofollow, nosnippet, noarchive" },
-        { "key": "X-Frame-Options",                  "value": "SAMEORIGIN" },
-        { "key": "X-Content-Type-Options",           "value": "nosniff" },
-        { "key": "Referrer-Policy",                  "value": "no-referrer-when-downgrade" },
-        { "key": "X-DNS-Prefetch-Control",           "value": "off" },
-        { "key": "Cross-Origin-Opener-Policy",       "value": "same-origin-allow-popups" },
-        { "key": "Cross-Origin-Embedder-Policy",     "value": "unsafe-none" },
-        {
-          "key": "Permissions-Policy",
-          "value": "geolocation=(), microphone=(), camera=(), payment=(), fullscreen=(self), picture-in-picture=(self)"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' https: data: blob:; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https:; connect-src 'self' https: wss: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:; media-src 'self' https: blob:;"
-        }
+        { "key": "X-Robots-Tag",                "value": "noindex, nofollow, nosnippet, noarchive" },
+        { "key": "X-Content-Type-Options",      "value": "nosniff" },
+        { "key": "Referrer-Policy",             "value": "no-referrer-when-downgrade" },
+        { "key": "X-DNS-Prefetch-Control",      "value": "off" },
+        { "key": "Cross-Origin-Opener-Policy",  "value": "same-origin-allow-popups" },
+        { "key": "Cross-Origin-Embedder-Policy","value": "unsafe-none" },
+        { "key": "Permissions-Policy",          "value": "geolocation=(), microphone=(), camera=(), payment=(), usb=(), display-capture=(), fullscreen=(self), picture-in-picture=(self), accelerometer=*, gyroscope=*" },
+        { "key": "Content-Security-Policy",     "value": "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' https: data: blob:; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https:; connect-src 'self' https: wss: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:; media-src 'self' https: blob:;" }
       ]
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api/frame",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options",        "value": "DENY" }
-      ]
-    },
-    {
-      "source": "/api/tmdb",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" }
-      ]
-    },
-    {
-      "source": "/api/proxy",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" }
+        { "key": "Content-Type",           "value": "text/html; charset=utf-8" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     },
     {
       "source": "/api/auth",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "X-Frame-Options",              "value": "DENY" },
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
@@ -63,9 +45,37 @@
     {
       "source": "/api/user",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "X-Frame-Options",              "value": "DENY" },
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+      ]
+    },
+    {
+      "source": "/api/tmdb",
+      "headers": [
+        { "key": "X-Frame-Options",             "value": "DENY" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/api/proxy",
+      "headers": [
+        { "key": "X-Frame-Options",             "value": "DENY" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/api/config",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    },
+    {
+      "source": "/api/stream/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options",             "value": "DENY" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
       ]
     }
   ]
