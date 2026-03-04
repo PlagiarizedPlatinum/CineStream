@@ -35,42 +35,52 @@
     {
       "source": "/api/frame",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
-      ]
-    },
-    {
-      "source": "/api/(.*)",
-      "headers": [
+        { "key": "Content-Type",           "value": "text/html; charset=utf-8" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options",        "value": "DENY" }
-      ]
-    },
-    {
-      "source": "/api/tmdb",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" }
-      ]
-    },
-    {
-      "source": "/api/proxy",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" }
+        { "key": "X-Frame-Options",        "value": "SAMEORIGIN" }
       ]
     },
     {
       "source": "/api/auth",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+        { "key": "X-Frame-Options",                 "value": "DENY" },
+        { "key": "X-Content-Type-Options",          "value": "nosniff" },
+        { "key": "Access-Control-Allow-Origin",     "value": "*" },
+        { "key": "Access-Control-Allow-Methods",    "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers",    "value": "Content-Type, Authorization" }
       ]
     },
     {
       "source": "/api/user",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+        { "key": "X-Frame-Options",                 "value": "DENY" },
+        { "key": "X-Content-Type-Options",          "value": "nosniff" },
+        { "key": "Access-Control-Allow-Origin",     "value": "*" },
+        { "key": "Access-Control-Allow-Methods",    "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers",    "value": "Content-Type, Authorization" }
+      ]
+    },
+    {
+      "source": "/api/tmdb",
+      "headers": [
+        { "key": "X-Frame-Options",                "value": "DENY" },
+        { "key": "X-Content-Type-Options",         "value": "nosniff" },
+        { "key": "Access-Control-Allow-Origin",    "value": "*" }
+      ]
+    },
+    {
+      "source": "/api/proxy",
+      "headers": [
+        { "key": "X-Frame-Options",                "value": "DENY" },
+        { "key": "X-Content-Type-Options",         "value": "nosniff" },
+        { "key": "Access-Control-Allow-Origin",    "value": "*" }
+      ]
+    },
+    {
+      "source": "/api/config",
+      "headers": [
+        { "key": "X-Frame-Options",                "value": "DENY" },
+        { "key": "X-Content-Type-Options",         "value": "nosniff" }
       ]
     }
   ]

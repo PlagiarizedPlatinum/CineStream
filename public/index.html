@@ -1580,7 +1580,7 @@ function navigateToDetail(id,type){
    PLAYER
 ════════════════════════════════════════════════════ */
 function frameUrl(raw){
-  if(!raw)return '';
+  if(!raw)return 'about:blank';
   // Never wrap our own domain or relative URLs - that causes X-Frame-Options errors
   try{
     const u=new URL(raw);
@@ -1632,7 +1632,7 @@ function switchSource(src){
 function openPlayer(){document.getElementById('player-modal').classList.add('active');document.body.style.overflow='hidden';}
 function closePlayer(){
   document.getElementById('player-modal').classList.remove('active');
-  document.getElementById('player-iframe').src='';
+  document.getElementById('player-iframe').src='about:blank';
   if(typeof _destroyHlsPlayer==='function')_destroyHlsPlayer();
   document.body.style.overflow='';state.currentMedia=null;
 }
@@ -1651,7 +1651,7 @@ async function playTV(show){
   document.getElementById('player-title').textContent=name;
   document.getElementById('player-subtitle').textContent='Loading episode data…';
   document.getElementById('episode-selector-wrap').style.display='block';
-  document.getElementById('player-iframe').src='';
+  document.getElementById('player-iframe').src='about:blank';
   resetSourceSwitcher();openPlayer();
   try{
     const details=await tmdb(`/tv/${show.id}`);
@@ -1791,7 +1791,7 @@ function showFranchises(){
 let _hlsInst = null;
 function _destroyHlsPlayer() {
   const old = document.getElementById('_rw_hls_video');
-  if (old) { try{old.pause();old.src='';}catch(_){} old.remove(); }
+  if (old) { try{old.pause();old.src='about:blank';}catch(_){} old.remove(); }
   if (_hlsInst) { try{_hlsInst.destroy();}catch(_){} _hlsInst = null; }
   const iframe = document.getElementById('player-iframe');
   if (iframe) iframe.style.display = '';
@@ -2007,7 +2007,7 @@ async function playMatch(matchKey){
 
   const sw=document.getElementById('source-switcher');
   sw.innerHTML='<span class="source-label">Stream</span><span style="font-size:11px;color:#666;margin-left:8px">Loading…</span>';
-  document.getElementById('player-iframe').src='';
+  document.getElementById('player-iframe').src='about:blank';
   openPlayer();
 
   // fetch actual stream embed URLs from the streams API
