@@ -12,8 +12,16 @@
   if(!('serviceWorker' in navigator)){return;}
   navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'})
     .then(function(reg){
-      // No reg.update() on every load — avoids updatefound→skipWaiting→controllerchange→reload loop
-      function activateWaiting(sw){sw.postMessage('SKIP_WAITING');}
+      // Delay any waiting SW activation until after the page has fully loaded
+      // and is idle — activating mid-navigation causes the SW to intercept the
+      // /title navigate fetch during clients.claim() and can mishandle it.
+      function activateWaiting(sw){
+        if(document.readyState==='complete'){
+          sw.postMessage('SKIP_WAITING');
+        } else {
+          window.addEventListener('load',function(){sw.postMessage('SKIP_WAITING');},{once:true});
+        }
+      }
       if(reg.waiting)activateWaiting(reg.waiting);
       reg.addEventListener('updatefound',function(){
         var sw=reg.installing;if(!sw)return;

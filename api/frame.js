@@ -449,7 +449,7 @@ function nuke(n){if(n&&n.parentNode){n.remove();report('mo-nuke',(n.id||n.classN
 function chkOverlay(n){
   try{
     const cs=window.getComputedStyle(n),zi=parseInt(cs.zIndex||0,10),pos=cs.position;
-    if((pos==='fixed'||pos==='absolute')&&zi>8000){
+    if((pos==='fixed'||pos==='absolute')&&zi>2147483000){
       const w=parseFloat(cs.width),h=parseFloat(cs.height);
       if(w>window.innerWidth*0.25||h>window.innerHeight*0.25)nuke(n);
     }
@@ -475,7 +475,10 @@ Element.prototype.attachShadow=function(init){
   return root;
 };
 
-/* 32. Periodic sweep every 4s */
+/* 32. Periodic sweep every 4s
+   NOTE: z-index threshold raised to 2147483600 (near INT_MAX) so we only nuke
+   true full-page ad takeovers, NOT the embed player's own overlay UI which
+   legitimately uses high z-indexes for controls/modals inside the player. */
 const AD_SEL=[
   '.adsbygoogle','[id*="google_ads"]','[id*="div-gpt-ad"]',
   '[class*="popunder"]','[class*="clickunder"]','[id*="popunder"]',
@@ -498,7 +501,7 @@ function sweep(){
   try{document.querySelectorAll('div,span,section,aside,article,iframe').forEach(el=>{
     if(el.id==='embed')return;
     try{const cs=window.getComputedStyle(el),zi=parseInt(cs.zIndex||0,10),pos=cs.position;
-    if((pos==='fixed'||pos==='absolute')&&zi>8000){const w=parseFloat(cs.width),h=parseFloat(cs.height);if(w>window.innerWidth*0.25||h>window.innerHeight*0.25)el.remove();}}catch(_){}
+    if((pos==='fixed'||pos==='absolute')&&zi>2147483000){const w=parseFloat(cs.width),h=parseFloat(cs.height);if(w>window.innerWidth*0.25||h>window.innerHeight*0.25)el.remove();}}catch(_){}
   });}catch(_){}
 }
 [100,300,700,1200,2000,3500,6000].forEach(t=>setTimeout(sweep,t));
