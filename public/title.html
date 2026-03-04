@@ -386,9 +386,10 @@ a { text-decoration: none; color: inherit; }
   try{Object.defineProperty(window,'opener',{get:()=>null,set:()=>{},configurable:false});}catch(_){}
   (function lockLocation(){
     const _replace=location.replace.bind(location);
+    const _assign=location.assign.bind(location);
     const sameOrigin=(url)=>{try{return new URL(url,location.href).origin===location.origin;}catch(_){return false;}};
     try{location.replace=(url)=>{if(sameOrigin(url))_replace(url);};}catch(_){}
-    try{location.assign=(url)=>{if(sameOrigin(url))window.location.assign(url);};}catch(_){}
+    try{location.assign=(url)=>{if(sameOrigin(url))_assign(url);};}catch(_){}
   })();
   document.addEventListener('click',function(e){
     const a=e.target.closest('a[href]');

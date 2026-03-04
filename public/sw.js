@@ -275,15 +275,15 @@ self.addEventListener('fetch', e => {
 
   // ─── RULE 3: Block ALL external top-level navigations ─────────────────
   // SPA rule: this tab must NEVER navigate away from our origin.
-  // Any top-frame navigation to another origin = ad redirect. Kill it.
+  // Any top-frame navigation to another origin = ad redirect. Instead of
+  // forcing history.back() (which can cause reload loops or close the tab
+  // on desktop browsers), show a lightweight "navigation blocked" page.
   if (mode === 'navigate' && dest === 'document') {
     if (origin !== SELF_ORIGIN) {
       console.warn('[SW v7] BLOCKED top-level nav →', url);
-      // Respond with history.back() — no location.replace('/') which would
-      // reload the SPA and clear state/console
       e.respondWith(new Response(
-        '<html><body><script>try{history.back();}catch(e){}<\/script></body></html>',
-        { status: 200, headers: {'Content-Type':'text/html','Cache-Control':'no-store','X-RW-Shield':'nav-blocked'} }
+        '<!doctype html><html><head><meta charset="utf-8"><title>Navigation blocked</title><style>body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#02060b;color:#f9fafb;display:flex;align-items:center;justify-content:center;min-height:100vh}main{max-width:420px;padding:24px 20px;text-align:center;background:rgba(15,23,42,0.96);border-radius:12px;box-shadow:0 18px 50px rgba(15,23,42,0.75)}h1{font-size:20px;margin-bottom:8px}p{font-size:13px;line-height:1.6;color:#9ca3af;margin-bottom:16px}button{border:none;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;background:#e50914;color:#fff}button:hover{background:#f6121d}</style></head><body><main><h1>Navigation blocked</h1><p>This tab tried to open a page on another site, which is blocked to prevent popups and redirects.</p><button onclick="try{location.href=\'/\';}catch(e){}">Back to ReelWave</button></main></body></html>',
+        { status: 200, headers: {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-RW-Shield':'nav-blocked'} }
       ));
       notifyBlocked(hostname, 'navigation');
       return;
