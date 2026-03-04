@@ -109,6 +109,15 @@ const ALLOWED_EMBED_HOSTS = [
   'vidlink.pro','www.vidlink.pro',
   '2embed.cc','www.2embed.cc','2embed.to','2embed.org','2embed.stream','www.2embed.stream',
   'streamed.su','streamed.pk','streamed.me',
+  'embedme.top','www.embedme.top',
+  'dlhd.sx','www.dlhd.sx',
+  'sportshd.me','www.sportshd.me',
+  'sportsurge.net','www.sportsurge.net',
+  'cricfree.sc','www.cricfree.sc',
+  'feed.streamed.su','feed.streamed.pk',
+  'alphasonline.com','alphasonline.net',
+  'hdtoday.tv','hdtoday.cc',
+  'livesport.ws','www.livesport.ws',
   'smashystream.com','smashystream.xyz','smashystream.to','player.smashy.stream',
   'moviesapi.club','moviesapi.com',
   'closeload.com','closeload.net',
@@ -230,7 +239,7 @@ window.setInterval=function(fn,d,...a){if(typeof fn==='string'&&BAD_KW.some(b=>f
    any external navigation it tries to perform. */
 const _aEL=EventTarget.prototype.addEventListener;
 const _rEL=EventTarget.prototype.removeEventListener;
-const AD_EVTS=new Set(['mousedown','pointerdown','touchstart','touchend','click','focus','blur','visibilitychange']);
+const AD_EVTS=new Set(['mousedown','pointerdown','touchstart','touchend','click']);
 const _wm=new WeakMap();
 function wrapFn(type,fn){
   if(typeof fn!=='function'||!AD_EVTS.has(type))return fn;
@@ -300,11 +309,11 @@ document.addEventListener('click',function(e){
   }catch(_){}
 },true);
 
-/* 13. beforeunload / blur / pagehide traps */
-window.addEventListener('beforeunload',function(e){e.preventDefault();e.returnValue='';return '';},true);
-window.addEventListener('blur',function(e){e.stopImmediatePropagation();},true);
-window.addEventListener('pagehide',function(e){e.stopImmediatePropagation();},true);
-try{Object.defineProperty(window,'onbeforeunload',{set(v){if(typeof v==='string')return;},get:()=>null,configurable:false});}catch(_){}
+/* 13. beforeunload / blur / pagehide — NOTE: we do NOT block these on the
+   frame window itself. Blocking beforeunload here propagates up to the parent
+   page and causes the browser to show "Leave page?" dialogs or trigger reload
+   loops when the user clicks a movie. We only block them on the INNER embed
+   iframe (handled in the load event below). */
 
 /* 14. Notifications / Push */
 try{
@@ -534,7 +543,7 @@ console.log('[RW-FRAME] Shield v8 ABSOLUTE NUKE active — 33 vectors');
   const frame=document.getElementById('embed');
   if(!frame)return;
   frame.addEventListener('load',function(){
-    try{const cw=frame.contentWindow;if(cw)cw.eval('(function(){try{window.open=()=>null;Object.defineProperty(window,"open",{value:()=>null,writable:false,configurable:false});}catch(_){}try{Object.defineProperty(window,"opener",{get:()=>null,set:()=>{},configurable:false});}catch(_){}window.addEventListener("blur",e=>e.stopImmediatePropagation(),true);window.addEventListener("beforeunload",e=>{e.preventDefault();e.returnValue="";return "";},true);}catch(_){}})()');
+    try{const cw=frame.contentWindow;if(cw)cw.eval('(function(){try{window.open=()=>null;Object.defineProperty(window,"open",{value:()=>null,writable:false,configurable:false});}catch(_){}try{Object.defineProperty(window,"opener",{get:()=>null,set:()=>{},configurable:false});}catch(_){}window.addEventListener("beforeunload",e=>{e.preventDefault();e.returnValue="";return "";},true);}catch(_){}})()');
     }catch(_){}
   });
   window.addEventListener('message',function(e){
