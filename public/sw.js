@@ -13,9 +13,9 @@
 
 'use strict';
 
-const SW_VERSION   = 'rw-v8';
+const SW_VERSION   = 'rw-v9';
 const SELF_ORIGIN  = self.location.origin;
-const BLOCK_CACHE  = 'rw-blocked-v8';
+const BLOCK_CACHE  = 'rw-blocked-v9';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MEGA BLOCKED HOSTNAME SET
@@ -273,18 +273,26 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // ─── RULE 3: Block ALL external top-level navigations ─────────────────
-  // SPA rule: this tab must NEVER navigate away from our origin.
-  // Any top-frame navigation to another origin = ad redirect. Kill it.
+  // ─── RULE 3: Block external TOP-LEVEL tab navigations only ───────────
+  // IMPORTANT: dest==='document' fires for both top-level tab navigations AND
+  // navigations inside iframes (e.g. embed providers redirect through several
+  // hostnames before landing on their player). We must NOT block those iframe
+  // redirects or the embed breaks with 5 refreshes then 403.
+  // We distinguish them by checking the Referer header:
+  //   - Referer is our own origin  → top-level page navigating away → BLOCK if external
+  //   - Referer is a foreign origin → iframe redirect chain          → PASS THROUGH
+  //   - No Referer                  → user typed / bookmark          → BLOCK if external
   if (mode === 'navigate' && dest === 'document') {
-    // Use startsWith check in addition to origin equality to avoid false
-    // positives during SW activation / clients.claim() race conditions.
     const isSameOrigin = origin === SELF_ORIGIN
       || url.startsWith(SELF_ORIGIN + '/')
       || url.startsWith(SELF_ORIGIN + '?')
       || url === SELF_ORIGIN;
     if (!isSameOrigin) {
-      console.warn('[SW v8] BLOCKED top-level nav →', url);
+      const referer  = req.headers.get('Referer') || '';
+      const refIsSelf = !referer || referer.startsWith(SELF_ORIGIN);
+      // Foreign referer = iframe redirect chain — let it pass
+      if (!refIsSelf) return;
+      console.warn('[SW v9] BLOCKED top-level nav →', url);
       e.respondWith(new Response(
         '<html><body><script>try{history.back();}catch(e){}<\/script></body></html>',
         { status: 200, headers: {'Content-Type':'text/html','Cache-Control':'no-store','X-RW-Shield':'nav-blocked'} }
