@@ -13,9 +13,9 @@
 
 'use strict';
 
-const SW_VERSION   = 'rw-v6';
+const SW_VERSION   = 'rw-v7';
 const SELF_ORIGIN  = self.location.origin;
-const BLOCK_CACHE  = 'rw-blocked-v6';
+const BLOCK_CACHE  = 'rw-blocked-v7';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MEGA BLOCKED HOSTNAME SET
@@ -157,7 +157,7 @@ const BLOCKED = new Set([
    redirect chains, click trackers, and URL-hijack services.
 ═══════════════════════════════════════════════════════════════════════════ */
 const BLOCK_URL_PATTERNS = [
-  /[?&](redirect|goto|url|link|src|ref|out|click|track)=[^&]*(https?|www\.)/i,
+  // (removed: was matching /api/frame?url= and /api/proxy?url= — our own routes)
   /\/go\/https?:\/\//i,
   /\/out\/https?:\/\//i,
   /\/redirect\/https?:\/\//i,
@@ -215,40 +215,6 @@ function silentBlockJs() {
   });
 }
 
-function blockedNavPage(blockedUrl) {
-  let hostname = '';
-  try { hostname = new URL(blockedUrl).hostname; } catch (_) { hostname = blockedUrl; }
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Blocked</title>
-<script>
-(function(){
-  // Try to go back, fall back to home
-  try {
-    if (window.history.length > 1) { window.history.back(); }
-    else { window.location.replace('/'); }
-  } catch(e) { window.location.replace('/'); }
-  // Also post a message to parent so the app knows
-  try { window.parent.postMessage({ type: 'RW_NAV_BLOCKED', hostname: '${hostname.replace(/'/g,"\\'")}' }, '*'); } catch(_) {}
-  // Hard redirect to home after 400ms if back() didn't work
-  setTimeout(function(){ try { window.location.replace('/'); } catch(_){} }, 400);
-})();
-<\/script>
-</head>
-<body style="background:#07090d;color:#e8c96d;font-family:sans-serif;display:flex;
-align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:12px">
-<div style="font-size:32px">&#x1F6E1;</div>
-<div style="font-size:14px;letter-spacing:2px">AD REDIRECT BLOCKED</div>
-<div style="font-size:11px;color:#5a6478">${hostname}</div>
-</body></html>`;
-  return new Response(html, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'X-RW-Shield': 'nav-blocked',
-    },
-  });
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LIFECYCLE
@@ -312,8 +278,13 @@ self.addEventListener('fetch', e => {
   // Any top-frame navigation to another origin = ad redirect. Kill it.
   if (mode === 'navigate' && dest === 'document') {
     if (origin !== SELF_ORIGIN) {
-      console.warn('[SW v6] BLOCKED top-level nav →', url);
-      e.respondWith(blockedNavPage(url));
+      console.warn('[SW v7] BLOCKED top-level nav →', url);
+      // Respond with history.back() — no location.replace('/') which would
+      // reload the SPA and clear state/console
+      e.respondWith(new Response(
+        '<html><body><script>try{history.back();}catch(e){}<\/script></body></html>',
+        { status: 200, headers: {'Content-Type':'text/html','Cache-Control':'no-store','X-RW-Shield':'nav-blocked'} }
+      ));
       notifyBlocked(hostname, 'navigation');
       return;
     }
