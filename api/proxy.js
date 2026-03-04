@@ -1,12 +1,12 @@
 /**
  * /api/proxy — ReelWave Sports Proxy v6
  * Handles JSON API calls AND HLS stream proxying (M3U8 + TS segments).
- * Used as FALLBACK only when browser can't reach streamed.pk directly.
  */
 export const config = { runtime: 'edge' };
 
-const MIRRORS  = ['https://streamed.pk','https://streamed.su','https://streamed.me'];
-const ALLOWED  = ['streamed.pk','streamed.su','streamed.me','embedme.top'];
+const MIRRORS = ['https://streamed.pk','https://streamed.su','https://streamed.me'];
+const ALLOWED = ['streamed.pk','streamed.su','streamed.me','embedme.top'];
+
 const HDR = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Referer':    'https://streamed.pk/',
@@ -25,33 +25,33 @@ function allowed(h) {
   return ALLOWED.some(a => h === a || h.endsWith('.' + a));
 }
 
-function rewrite(url, base) {
+function rewriteMirror(url, base) {
   try { const u = new URL(url); return base + u.pathname + u.search; } catch(_) { return url; }
 }
 
-// Rewrite M3U8 playlist so segment URLs go through our proxy too
-function rewriteM3u8(text, originalBase) {
-  return text.replace(/^((?!#).+\.ts.*)$/gm, (line) => {
-    try {
-      const absUrl = new URL(line.trim(), originalBase).href;
-      return `/api/proxy?url=${encodeURIComponent(absUrl)}`;
-    } catch(_) { return line; }
-  }).replace(/URI="([^"]+)"/g, (m, uri) => {
-    try {
-      const absUrl = new URL(uri, originalBase).href;
-      return `URI="/api/proxy?url=${encodeURIComponent(absUrl)}"`;
-    } catch(_) { return m; }
-  }).replace(/^((?!#).+\.m3u8.*)$/gm, (line) => {
-    try {
-      const absUrl = new URL(line.trim(), originalBase).href;
-      return `/api/proxy?url=${encodeURIComponent(absUrl)}`;
-    } catch(_) { return line; }
-  });
+function rewriteM3u8(text, baseUrl) {
+  const base = baseUrl.replace(/\/[^/]*$/, '/');
+  return text
+    // Rewrite sub-playlists (.m3u8 lines)
+    .replace(/^(?!#)(.+\.m3u8.*)$/gm, line => {
+      try { return `/api/proxy?url=${encodeURIComponent(new URL(line.trim(), base).href)}`; }
+      catch(_) { return line; }
+    })
+    // Rewrite segment lines (.ts)
+    .replace(/^(?!#)(.+\.ts.*)$/gm, line => {
+      try { return `/api/proxy?url=${encodeURIComponent(new URL(line.trim(), base).href)}`; }
+      catch(_) { return line; }
+    })
+    // Rewrite URI="..." in #EXT-X-KEY, #EXT-X-MAP etc.
+    .replace(/URI="([^"]+)"/g, (m, uri) => {
+      try { return `URI="/api/proxy?url=${encodeURIComponent(new URL(uri, base).href)}"`; }
+      catch(_) { return m; }
+    });
 }
 
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: { ...CORS } });
+    return new Response(null, { status: 204, headers: CORS });
   }
   if (req.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -59,7 +59,8 @@ export default async function handler(req) {
     });
   }
 
-  const url = new URL(req.url).searchParams.get('url');
+  const reqUrl = new URL(req.url);
+  const url = reqUrl.searchParams.get('url');
   if (!url) {
     return new Response(JSON.stringify({ error: 'Missing url' }), {
       status: 400, headers: { 'Content-Type': 'application/json', ...CORS },
@@ -79,41 +80,45 @@ export default async function handler(req) {
     });
   }
 
-  const isHLS = url.includes('.m3u8') || url.includes('.ts');
-  const urlsToTry = isHLS ? [url] : MIRRORS.map(m => rewrite(url, m));
+  const isHLS = /\.(m3u8|ts)(\?|$)/i.test(url);
+  // For HLS/TS, use exact URL. For JSON API, try all mirrors.
+  const urlsToTry = isHLS ? [url] : MIRRORS.map(m => rewriteMirror(url, m));
 
-  const reqHdrs = { ...HDR };
+  const fetchHdrs = { ...HDR };
   const range = req.headers.get('Range');
-  if (range) reqHdrs['Range'] = range;
+  if (range) fetchHdrs['Range'] = range;
 
   for (const tryUrl of urlsToTry) {
     try {
-      const res = await fetch(tryUrl, { headers: reqHdrs, redirect: 'follow' });
+      const res = await fetch(tryUrl, { headers: fetchHdrs, redirect: 'follow' });
       if (!res.ok) continue;
 
-      const ct = res.headers.get('Content-Type') || '';
-      const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || tryUrl.includes('.m3u8');
+      const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+      const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8(\?|$)/i.test(tryUrl);
 
       if (isM3u8) {
         const body = await res.text();
-        const base = new URL(tryUrl).href.replace(/\/[^/]+$/, '/');
-        const rewritten = rewriteM3u8(body, base);
+        const rewritten = rewriteM3u8(body, tryUrl);
         return new Response(rewritten, {
           status: 200,
           headers: {
             'Content-Type': 'application/vnd.apple.mpegurl',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-store',
             ...CORS,
           },
         });
       }
 
-      const contentType = ct || (tryUrl.endsWith('.ts') ? 'video/mp2t' : 'application/json');
+      // TS segment or JSON — stream body directly
+      const isTsSegment = /\.ts(\?|$)/i.test(tryUrl);
+      const contentType = isTsSegment ? 'video/mp2t' : (ct || 'application/json');
+      const cacheControl = isTsSegment ? 'no-cache' : 'public,s-maxage=30,stale-while-revalidate=60';
+
       return new Response(res.body, {
         status: res.status,
         headers: {
           'Content-Type': contentType,
-          'Cache-Control': isHLS ? 'no-cache' : 'public,s-maxage=30,stale-while-revalidate=60',
+          'Cache-Control': cacheControl,
           'X-RW-Mirror': tryUrl,
           ...CORS,
         },
@@ -121,7 +126,7 @@ export default async function handler(req) {
     } catch(_) {}
   }
 
-  return new Response(JSON.stringify({ error: 'All mirrors unreachable from server' }), {
+  return new Response(JSON.stringify({ error: 'All mirrors unreachable' }), {
     status: 502, headers: { 'Content-Type': 'application/json', ...CORS },
   });
 }

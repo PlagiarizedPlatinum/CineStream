@@ -28,7 +28,7 @@
 </script>
 <link rel="dns-prefetch" href="https://api.themoviedb.org">
 <link rel="dns-prefetch" href="https://image.tmdb.org">
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Netflix+Sans:wght@400;500;700&display=swap" rel="stylesheet" onerror="this.remove()">
@@ -475,14 +475,15 @@ main { padding-top: var(--header-h); }
 .continue-progress-bar { height: 100%; background: var(--nf-red); }
 .continue-remove { 
   position: absolute; top: 6px; right: 6px; 
-  background: rgba(0,0,0,.85); border: 1px solid rgba(255,255,255,.2); 
-  color: #fff; width: 24px; height: 24px; border-radius: 50%; 
-  font-size: 11px; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.75); border: 1px solid rgba(255,255,255,.25); 
+  color: #fff; width: 22px; height: 22px; border-radius: 50%; 
+  font-size: 10px; display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity .2s; cursor: pointer; z-index: 5;
 }
 .continue-card:hover .continue-remove { opacity: 1; }
 @media (max-width: 768px) {
-  .continue-remove { opacity: 1; width: 22px; height: 22px; }
+  /* Always show X on mobile since hover doesn't work on touch */
+  .continue-remove { opacity: 0.7; }
 }
 
 /* ══ LOAD MORE ═══════════════════════════════════════ */
@@ -501,7 +502,6 @@ main { padding-top: var(--header-h); }
   border-bottom: 2px solid #333;
   overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none; -ms-overflow-style: none;
-  touch-action: pan-x;
 }
 .nf-tab-btns::-webkit-scrollbar { display: none; }
 .nf-tab-btn {
@@ -595,8 +595,9 @@ main { padding-top: var(--header-h); }
 }
 .refresh-btn:hover { color: #fff; border-color: #666; }
 .leagues-bar {
-  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px; scrollbar-width: none;
-  touch-action: pan-x; -webkit-overflow-scrolling: touch;
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 16px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  -ms-overflow-style: none;
 }
 .leagues-bar::-webkit-scrollbar { display: none; }
 .league-btn {
@@ -698,24 +699,35 @@ main { padding-top: var(--header-h); }
   position: fixed;
   bottom: 0; left: 0; right: 0;
   z-index: 600;
+  /* Extend background all the way to physical bottom edge, covering the iOS home indicator gap */
   background: rgba(20,20,20,.98);
   border-top: 1px solid #2f2f2f;
+  /* Height = nav buttons + safe area */
   height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  align-items: center;
-  /* Force own compositing layer — prevents iOS scroll jank from moving it */
+  align-items: flex-start;
+  padding-top: 0;
   -webkit-transform: translate3d(0,0,0);
   transform: translate3d(0,0,0);
   will-change: transform;
-  /* Prevent iOS from treating it as scrollable context */
   -webkit-overflow-scrolling: auto;
+  /* Prevent any gap by using a pseudo-element that fills below */
+}
+.mobile-nav::after {
+  content: '';
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  background: rgba(20,20,20,.98);
+  pointer-events: none;
+  z-index: -1;
 }
 .mob-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; background: none; border: none; color: #aaa;
   font-size: 9px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase;
   transition: color var(--transition); padding: 6px 0;
-  min-height: 44px;
+  min-height: var(--mobile-nav-h);
 }
 .mob-btn svg { width: 22px; height: 22px; fill: currentColor; }
 .mob-btn.active { color: #fff; }
@@ -906,10 +918,10 @@ main { padding-top: var(--header-h); }
           <button class="color-btn" data-color="#e8884d" style="background:#e8884d" title="Orange"></button>
         </div>
       </div>
-      <div id="settings-account-section" style="border-top:1px solid #2a2a2a;padding-top:16px;display:none">
+      <div id="settings-account-row" style="display:none;border-top:1px solid #2a2a2a;padding-top:16px;">
         <div class="settings-label">Account</div>
-        <div id="settings-account-info" style="font-size:13px;color:#888;margin-bottom:10px"></div>
-        <button id="settings-signout-btn" style="background:none;border:1px solid #555;color:#e87c26;font-size:13px;font-weight:600;padding:8px 20px;border-radius:4px;cursor:pointer;transition:all .15s;width:100%">↩ Sign Out</button>
+        <div id="settings-account-email" style="font-size:13px;color:#888;margin-bottom:10px;word-break:break-all;"></div>
+        <button id="settings-signout-btn" style="width:100%;background:none;border:1px solid #555;color:#e87c26;font-size:13px;font-weight:600;padding:9px 20px;border-radius:4px;cursor:pointer;">↩ Sign Out</button>
       </div>
     </div>
     <div class="settings-foot">
@@ -1189,7 +1201,6 @@ let state={
   settings:{source:'vidsrc',accent:'#e50914',cardSize:160},
 };
 const matchMap=new Map();
-let _playerJustOpened = false;
 
 /* ════════════════════════════════════════════════════
    TOAST
@@ -1206,13 +1217,14 @@ function showToast(msg,type='',dur=2500){
 ════════════════════════════════════════════════════ */
 function getWatchlist(){try{return JSON.parse(localStorage.getItem(WATCHLIST_KEY)||'[]');}catch(_){return[];}}
 function saveWatchlist(list){try{localStorage.setItem(WATCHLIST_KEY,JSON.stringify(list));}catch(_){}updateWatchlistBadge();}
+window.saveWatchlist=function(list){saveWatchlist(list);};
 function isInWatchlist(id,type){return getWatchlist().some(i=>String(i.id)===String(id)&&i.type===type);}
 function toggleWatchlist(item){
   let list=getWatchlist();
   const idx=list.findIndex(i=>String(i.id)===String(item.id)&&i.type===item.type);
   if(idx>=0){list.splice(idx,1);showToast('Removed from My List');}
   else{list.unshift({id:item.id,type:item.type,title:item.title,poster:item.poster,year:item.year,rating:item.rating,added:Date.now()});showToast('Added to My List','success');}
-  saveWatchlist(list);
+  window.saveWatchlist(list);
   refreshWatchlistButtons(item.id,item.type);
   if(state.currentTab==='watchlist')renderWatchlistTab();
 }
@@ -1260,6 +1272,7 @@ function renderWatchlistTab(){
 ════════════════════════════════════════════════════ */
 function getContinue(){try{return JSON.parse(localStorage.getItem(CONTINUE_KEY)||'[]');}catch(_){return[];}}
 function saveContinue(list){try{localStorage.setItem(CONTINUE_KEY,JSON.stringify(list));}catch(_){}}
+window.saveContinue=function(list){saveContinue(list);};
 function addToContinue(item){
   let list=getContinue();
   const idx=list.findIndex(i=>String(i.id)===String(item.id)&&i.type===item.type);
@@ -1596,22 +1609,11 @@ function switchSource(src){
   document.querySelectorAll('#source-switcher .src-btn').forEach(b=>b.classList.toggle('active',b.dataset.src===src));
   if(state.currentMedia?.type!=='football')setPlayerSrc();
 }
-function openPlayer(){
-  document.getElementById('player-modal').classList.add('active');
-  document.body.style.overflow='hidden';
-  // Small guard to prevent immediate close from event bubbling
-  _playerJustOpened = true;
-  setTimeout(()=>{ _playerJustOpened = false; }, 300);
-}
+function openPlayer(){document.getElementById('player-modal').classList.add('active');document.body.style.overflow='hidden';}
 function closePlayer(){
-  if(_playerJustOpened) return;
   document.getElementById('player-modal').classList.remove('active');
   document.getElementById('player-iframe').src='';
-  document.getElementById('player-iframe').style.display='';
-  // Clean up HLS
-  const vid=document.getElementById('hls-video-player');
-  if(vid){vid.pause();vid.src='';vid.remove();}
-  if(_hlsInstance){try{_hlsInstance.destroy();}catch(_){}  _hlsInstance=null;}
+  if(typeof _destroyHlsPlayer==='function')_destroyHlsPlayer();
   document.body.style.overflow='';state.currentMedia=null;
 }
 function playMovie(movie){
@@ -1762,61 +1764,67 @@ function showFranchises(){
 }
 
 /* ════════════════════════════════════════════════════
-   SPORTS STREAM LOADER (HLS + embed)
+   SPORTS
 ════════════════════════════════════════════════════ */
-let _hlsInstance = null;
 
-function loadSportStream(url, isHls) {
+/* HLS sport stream player */
+let _hlsInst = null;
+function _destroyHlsPlayer() {
+  const old = document.getElementById('_rw_hls_video');
+  if (old) { try{old.pause();old.src='';}catch(_){} old.remove(); }
+  if (_hlsInst) { try{_hlsInst.destroy();}catch(_){} _hlsInst = null; }
+  const iframe = document.getElementById('player-iframe');
+  if (iframe) iframe.style.display = '';
+}
+function _loadSportStream(url) {
+  if (!url) return;
   const iframe = document.getElementById('player-iframe');
   const wrap = document.querySelector('.player-wrap');
+  _destroyHlsPlayer();
 
-  // Remove any existing HLS video element
-  const existingVid = document.getElementById('hls-video-player');
-  if (existingVid) existingVid.remove();
-  if (_hlsInstance) { try { _hlsInstance.destroy(); } catch(_) {} _hlsInstance = null; }
+  const isHlsUrl = /\.m3u8(\?|$)/i.test(url) || /streamed\.(pk|su|me)\/.*stream/i.test(url);
 
-  if (!isHls) {
-    // Regular embed URL — use iframe as before
-    iframe.style.display = '';
+  if (!isHlsUrl) {
+    // Regular embed page — wrap with frame helper to block ads
     iframe.src = frameUrl(url);
     return;
   }
 
-  // HLS stream — use a video element with HLS.js
+  // It's an HLS stream — use video element via HLS.js or native
   iframe.style.display = 'none';
   const vid = document.createElement('video');
-  vid.id = 'hls-video-player';
+  vid.id = '_rw_hls_video';
   vid.controls = true;
   vid.autoplay = true;
   vid.playsInline = true;
-  vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000;';
+  vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000;z-index:2;';
+  wrap.appendChild(vid);
 
-  // Try proxied URL first (for cross-origin HLS)
+  // Try proxy first (gets around CORS on HLS), fall back to direct
   const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
 
-  if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-    _hlsInstance = new Hls({
-      xhrSetup: (xhr) => { xhr.setRequestHeader('Origin', window.location.origin); },
-    });
-    _hlsInstance.loadSource(proxyUrl);
-    _hlsInstance.attachMedia(vid);
-    _hlsInstance.on(Hls.Events.ERROR, (e, data) => {
-      if (data.fatal) {
-        // Fallback: try direct URL
-        _hlsInstance.loadSource(url);
+  if (window.Hls && Hls.isSupported()) {
+    _hlsInst = new Hls({ enableWorker: false });
+    _hlsInst.loadSource(proxyUrl);
+    _hlsInst.attachMedia(vid);
+    _hlsInst.on(Hls.Events.ERROR, function(e, data) {
+      if (data.fatal && _hlsInst) {
+        // Retry direct
+        _hlsInst.loadSource(url);
+        _hlsInst.startLoad();
       }
     });
+    vid.play().catch(()=>{});
   } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-    // Safari native HLS
+    // Safari / iOS native HLS
     vid.src = url;
+    vid.play().catch(()=>{});
   } else {
-    // Fallback to iframe embed
+    // No HLS support — fall back to iframe
+    vid.remove();
     iframe.style.display = '';
     iframe.src = frameUrl(url);
-    return;
   }
-
-  wrap.appendChild(vid);
 }
 
 /* ════════════════════════════════════════════════════
@@ -1998,12 +2006,14 @@ async function playMatch(matchKey){
     return;
   }
 
+  // Clean up any existing HLS player
+  _destroyHlsPlayer();
+
   // build source switcher
   sw.innerHTML='<span class="source-label">Stream</span>';
   allStreams.forEach((stream,i)=>{
     const url=stream.embedUrl||stream.url||stream.hls||'';
     if(!url)return;
-    const isHls=!stream.embedUrl&&(url.includes('.m3u8')||stream.hls);
     const label=`${stream._sourceName||'Stream'} ${stream.streamNo||i+1}${stream.hd?' HD':''}${stream.language&&stream.language!=='English'?' ('+stream.language+')':''}`;
     const btn=document.createElement('button');
     btn.className=`src-btn${i===0?' active':''}`;
@@ -2011,16 +2021,14 @@ async function playMatch(matchKey){
     btn.addEventListener('click',()=>{
       sw.querySelectorAll('.src-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      loadSportStream(url,isHls);
+      _loadSportStream(url);
       document.getElementById('player-subtitle').textContent=label;
     });
     sw.appendChild(btn);
   });
 
-  const firstStream=allStreams[0];
-  const firstUrl=firstStream.embedUrl||firstStream.url||firstStream.hls;
-  const firstIsHls=!firstStream.embedUrl&&(firstUrl.includes('.m3u8')||firstStream.hls);
-  loadSportStream(firstUrl,firstIsHls);
+  const firstUrl=allStreams[0].embedUrl||allStreams[0].url||allStreams[0].hls;
+  _loadSportStream(firstUrl);
   document.getElementById('player-subtitle').textContent=`${allStreams.length} stream${allStreams.length!==1?'s':''} available`;
 }
 
@@ -2069,6 +2077,7 @@ function applyAccent(color){
 function saveSettings(){
   try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(state.settings));}catch(_){}
 }
+window.saveSettings=saveSettings;
 
 /* ════════════════════════════════════════════════════
    HEADER SCROLL
@@ -2094,40 +2103,10 @@ function wireEvents(){
 
   // Mobile nav
   document.querySelectorAll('.mob-btn[data-tab]').forEach(btn=>btn.addEventListener('click',()=>showTab(btn.dataset.tab)));
+  document.getElementById('mob-settings')?.addEventListener('click',()=>document.getElementById('settings-modal').classList.add('active'));
 
   // Settings
-  document.getElementById('settings-btn')?.addEventListener('click',()=>{
-    document.getElementById('settings-modal').classList.add('active');
-    // Populate account section if logged in
-    const authUser = window._rwAuthUser;
-    if(authUser){
-      const section=document.getElementById('settings-account-section');
-      const info=document.getElementById('settings-account-info');
-      if(section)section.style.display='block';
-      if(info){
-        if(authUser.isGlobal){
-          info.textContent='Signed in with access code';
-          const sb=document.getElementById('settings-signout-btn');
-          if(sb)sb.textContent='↩ Sign Out / Switch Account';
-        }else{
-          info.textContent=authUser.email||'Signed in';
-        }
-      }
-    }
-  });
-  document.getElementById('mob-settings')?.addEventListener('click',()=>{
-    document.getElementById('settings-modal').classList.add('active');
-    const authUser = window._rwAuthUser;
-    if(authUser){
-      const section=document.getElementById('settings-account-section');
-      const info=document.getElementById('settings-account-info');
-      if(section)section.style.display='block';
-      if(info){
-        if(authUser.isGlobal){info.textContent='Signed in with access code';}
-        else{info.textContent=authUser.email||'Signed in';}
-      }
-    }
-  });
+  document.getElementById('settings-btn')?.addEventListener('click',()=>document.getElementById('settings-modal').classList.add('active'));
   document.getElementById('settings-close')?.addEventListener('click',()=>document.getElementById('settings-modal').classList.remove('active'));
   document.getElementById('settings-modal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('active');});
   document.querySelectorAll('#settings-src-btns .settings-src-btn').forEach(btn=>btn.addEventListener('click',()=>{
@@ -2188,7 +2167,7 @@ function wireEvents(){
   document.getElementById('football-refresh')?.addEventListener('click',()=>{state.footballLoaded=false;loadFootball();});
 
   // Watchlist / continue
-  document.getElementById('clear-watchlist-btn')?.addEventListener('click',()=>{saveWatchlist([]);renderWatchlistTab();showToast('Watchlist cleared');});
+  document.getElementById('clear-watchlist-btn')?.addEventListener('click',()=>{window.saveWatchlist([]);renderWatchlistTab();showToast('Watchlist cleared');});
   document.getElementById('clear-continue-btn')?.addEventListener('click',()=>{window.saveContinue([]);renderContinueSection();showToast('Continue watching cleared');});
 
   // Slider arrows
@@ -2273,14 +2252,13 @@ async function apiGet(url, token) {
 function unlock(token, user) {
   authToken = token;
   authUser  = user;
-  window._rwAuthUser = user; // expose for settings modal
   try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch(_) {}
   document.getElementById('pw-gate').style.display = 'none';
   document.body.classList.add('authenticated');
   document.body.style.overflow = '';
-  // Mobile nav is shown/hidden via CSS media query - just ensure it's not force-hidden
+  // Let CSS media query handle mobile-nav visibility — just un-force-hide it
   const mn = document.getElementById('mobile-nav');
-  if (mn) mn.style.display = '';
+  if (mn) mn.style.removeProperty('display');
   // Show account indicator
   if (!user.isGlobal) {
     const wrap = document.getElementById('account-wrap');
@@ -2302,6 +2280,11 @@ function unlock(token, user) {
       });
     }
   }
+  // Populate settings account row
+  const settingsRow = document.getElementById('settings-account-row');
+  const settingsEmail = document.getElementById('settings-account-email');
+  if (settingsRow) settingsRow.style.display = 'block';
+  if (settingsEmail) settingsEmail.textContent = user.isGlobal ? 'Signed in with access code' : (user.email || '');
   initApp();
   // Pull cloud data after init (won't block)
   if (!user.isGlobal) syncFromCloud();
@@ -2377,6 +2360,11 @@ async function doLogout() {
   location.reload();
 }
 document.getElementById('logout-btn').addEventListener('click', doLogout);
+// Settings modal sign-out (may be called before element exists, wire after DOM ready)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
+});
+// Also wire immediately in case DOMContentLoaded already fired
 document.getElementById('settings-signout-btn')?.addEventListener('click', doLogout);
 
 // ── Account dropdown toggle ──────────────────────────
